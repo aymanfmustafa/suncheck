@@ -102,7 +102,7 @@ class Options:
     use_sam: bool = True
     pose: str = "sun"  # "sun": where the sun is in frame its solved pose replaces the sensor pose; "sensors": never
     advice: bool = False
-    workers: int = 3
+    workers: int = 6  # SAM calls in flight at once: sky and sun per frame plus one per blocker phrase
     year: int | None = None
 
 
