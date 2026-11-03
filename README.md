@@ -43,13 +43,16 @@ restarted whenever the server restarts. `/?job=sample` shows the shipped sample;
 
 **Live link (deployed 3 November):** https://suncheck-447203242444.me-central1.run.app. It runs on Google Cloud Run (project `tifyal`, region `me-central1`, Doha)
 from the `Dockerfile` here, built remotely by `gcloud run deploy suncheck --source . --region me-central1` with the key
-passed as `--set-env-vars META_API_KEY=...`. The settings that matter: `--no-cpu-throttling`, because the analysis runs in
-a background thread after the upload returns and the CPU would otherwise stop between the page's polls;
-`--min-instances 1 --max-instances 1`, so the running job's progress stays in one instance's memory and there is no cold
-start; 2 CPUs and 2 GiB for the 4K frames. Results in `out/web/` live as long as the instance (a redeploy clears them);
-the sample is inside the package, so `/?job=sample` always works. Redeploy with the same command after a change. The
-always-on instance costs about a dollar a day; `gcloud run services update suncheck --region me-central1 --min-instances 0`
-lets it sleep (results vanish when it does) and `gcloud run services delete suncheck --region me-central1` removes it.
+passed as `--set-env-vars META_API_KEY=...`. The settings that matter (set with `gcloud run services update`, 3 November,
+19:10): `--min-instances 0 --max-instances 1`, so nothing runs and nothing is billed while nobody is using it, and the
+one instance that wakes for a visitor keeps the running job's progress in memory (the first visit after a quiet spell
+takes a few seconds to start); `--no-cpu-throttling`, because the analysis runs in a background thread after the upload
+returns and the CPU would otherwise stop between the page's polls, so the instance is billed by the second it exists
+(about 7 cents an hour at 1 CPU and 2 GiB, and it goes away after about fifteen idle minutes); 1 CPU and 2 GiB for the
+frames. An always-on instance was tried first and dropped: it would have cost about $3.50 a day. Results in `out/web/`
+live as long as the instance (an idle spell or a redeploy clears them); the sample is inside the package, so
+`/?job=sample` always works. Redeploy with the same command after a change; `gcloud run services delete suncheck
+--region me-central1` removes the service.
 
 ## Layout
 
