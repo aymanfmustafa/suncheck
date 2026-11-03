@@ -666,13 +666,16 @@
     const shown = bl.map((it) => ({ it, fr: it.frames.find((f) => f.file === p.file) })).filter((x) => x.fr && x.fr.outline.length > 2 && (x.it.hours[mi] >= 0.05 || L.focus === x.it.id));
     shown.sort((a, b) => b.it.hours[mi] - a.it.hours[mi]);
     const placed = []; let labelled = 0;  // labels never sit on each other: the costliest wins the spot
+    // the photo is shown cropped to the screen (cover): labels stay inside the visible part and under the readout
+    const hr = $("hero").getBoundingClientRect(); const visW = Math.min(W, H * (hr.width / Math.max(1, hr.height))); const mx = (W - visW) / 2 + 14 * unit;
     shown.forEach((x) => {
       const on = L.focus === x.it.id; const o = x.fr.outline;
       stroke(() => { ctx.beginPath(); o.forEach((q, j) => j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); }, on ? 2.4 : 1.2, on ? "#F5B342" : "rgba(255,255,255,.5)", on ? [] : [5 * unit, 7 * unit]);
       if (labelled >= 3 && !on) return;
-      const top = o.reduce((a, q) => (q[1] < a[1] ? q : a), o[0]); const cx = o.reduce((sum, q) => sum + q[0], 0) / o.length;
-      const txt = `${x.it.name} · ${x.it.hours[mi].toFixed(1)} h`; const bw = txt.length * 10.5 * unit, bh = 26 * unit;
-      const lx = Math.max(bw / 2, Math.min(W - bw / 2, cx)), ly = Math.max(bh, top[1] - 16 * unit);
+      const top = o.reduce((a, q) => (q[1] < a[1] ? q : a), o[0]); const cx = o.reduce((sum, q) => sum + q[0], 0) / o.length; const cy = o.reduce((sum, q) => sum + q[1], 0) / o.length;
+      const txt = `${x.it.name} · ${x.it.hours[mi].toFixed(1)} h`; const bw = txt.length * 11.5 * unit, bh = 26 * unit;
+      const lx = Math.max(mx + bw / 2, Math.min(W - mx - bw / 2, cx));
+      const ly = top[1] - 16 * unit < 150 * unit ? Math.min(cy, top[1] + 150 * unit) : top[1] - 16 * unit;
       if (!on && placed.some((r) => (Math.abs(r[0] - lx) < (r[2] + bw) / 2 && Math.abs(r[1] - ly) < bh) || (r[3] === txt && Math.abs(r[0] - lx) < bw * 1.5))) return;
       placed.push([lx, ly, bw, txt]); labelled += 1; label(txt, lx, ly, 19, on);
     });
