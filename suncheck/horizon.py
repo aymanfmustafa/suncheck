@@ -31,11 +31,31 @@ class HorizonProfile:
         return np.where(np.isnan(out), unknown, out)
 
     def coverage(self) -> tuple[float, float | None, float | None]:
-        """Degrees of azimuth the profile knows, and the first and last known azimuth (None when nothing is known)."""
+        """Degrees of azimuth the profile knows, and the known range's start and end azimuths, clockwise (None when
+        nothing is known). The range may cross north (a view from 293 to 60 reports from_az 293, to_az 60): the known
+        arc is taken as everything outside the longest unknown arc of the circle."""
         known = ~np.isnan(self.el)
+        n = len(known)
         if not known.any():
             return 0.0, None, None
-        return float(known.sum() * AZ_STEP), float(self.az[np.argmax(known)]), float(self.az[len(known) - 1 - np.argmax(known[::-1])])
+        if known.all():
+            return 360.0, 0.0, 360.0 - AZ_STEP
+        first_known = int(np.argmax(known))
+        rolled = np.roll(known, -first_known)  # starts on a known entry, so a gap that crosses north stays in one piece
+        best_len, best_start, i = 0, 0, 0
+        while i < n:
+            if rolled[i]:
+                i += 1
+                continue
+            j = i
+            while j < n and not rolled[j]:
+                j += 1
+            if j - i > best_len:
+                best_len, best_start = j - i, i
+            i = j
+        gap_start = (first_known + best_start) % n
+        gap_end = (first_known + best_start + best_len) % n
+        return float(known.sum() * AZ_STEP), float(self.az[gap_end]), float(self.az[(gap_start - 1) % n])
 
     def covered(self, az_deg) -> np.ndarray:
         az = np.asarray(az_deg, dtype=float) % 360.0

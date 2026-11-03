@@ -60,6 +60,8 @@ def _pil_fallback(path: Path, meta: "PhotoMeta") -> None:
         meta.orientation = exif.get(0x0112)
         if ifd.get(0xA405):
             meta.f35_mm = float(ifd[0xA405])
+        if isinstance(ifd.get(0x927C), bytes):
+            meta.acceleration = apple_acceleration(ifd[0x927C])
         if ifd.get(0x9003):
             try:
                 meta.taken_local = datetime.strptime(str(ifd[0x9003]), "%Y:%m:%d %H:%M:%S")
@@ -151,42 +153,72 @@ def read_meta(path: str | Path) -> PhotoMeta:
     if meta.tz_offset_hours is None and meta.taken_utc is not None and meta.taken_local is not None:
         meta.tz_offset_hours = round((meta.taken_local - meta.taken_utc.replace(tzinfo=None)).total_seconds() / 3600.0, 2)
 
-    # Apple maker note: AccelerationVector (tag 0x0008), three signed rationals in g
-    for key, tag in tags.items():
-        lk = key.lower()
-        if "makernote" in lk and ("acceleration" in lk or lk.endswith("0x0008")):
-            try:
-                vals = [_ratio(v) for v in tag.values]
-                if len(vals) == 3:
-                    meta.acceleration = (vals[0], vals[1], vals[2])
-            except Exception:
-                pass
+    # Apple maker note: AccelerationVector (tag 0x0008), three signed rationals in g, decoded from the raw bytes
+    mn = tags.get("EXIF MakerNote")
+    if mn is not None and meta.acceleration is None:
+        try:
+            meta.acceleration = apple_acceleration(bytes(mn.values))
+        except (TypeError, ValueError):
+            pass
     return meta
+
+
+def apple_acceleration(maker_note: bytes) -> tuple[float, float, float] | None:
+    """The AccelerationVector (tag 8) of an Apple maker note: three signed rationals in g.
+
+    Apple's maker note is a little TIFF of its own whose value offsets count from the note's start; exifread resolves
+    them against the file's TIFF header and returns nonsense for this tag (seen on iPhone 14 Pro originals, 3 November
+    2026), so the entry is read here by hand.
+    """
+    import struct
+
+    if not maker_note or not maker_note.startswith(b"Apple iOS") or len(maker_note) < 16:
+        return None
+    endian = ">" if maker_note[12:14] == b"MM" else "<"
+    try:
+        n = struct.unpack(endian + "H", maker_note[14:16])[0]
+        for i in range(n):
+            off = 16 + 12 * i
+            tag, typ, cnt = struct.unpack(endian + "HHI", maker_note[off:off + 8])
+            if tag == 8 and cnt == 3 and typ in (5, 10):
+                valoff = struct.unpack(endian + "I", maker_note[off + 8:off + 12])[0]
+                fmt = endian + ("ii" if typ == 10 else "II")
+                vals = []
+                for j in range(3):
+                    num, den = struct.unpack(fmt, maker_note[valoff + 8 * j:valoff + 8 * j + 8])
+                    vals.append(num / den if den else 0.0)
+                return (vals[0], vals[1], vals[2])
+    except struct.error:
+        return None
+    return None
 
 
 def pitch_roll_from_acceleration(acc: tuple[float, float, float], orientation: int | None):
     """Camera pitch (elevation of the optical axis) and roll from Apple's acceleration vector.
 
     ExifTool documents the vector as viewed from the front of the phone: +X toward the left side, +Y toward the bottom,
-    +Z into the face of the phone (units of g). Gravity points down, so at rest the vector is the negative of the
-    gravity direction. Unverified against real photos; the sun-in-frame check is the arbiter.
+    +Z into the face of the phone (units of g); the reading is the reaction, so at rest it points up, away from gravity.
+    The back camera therefore looks along +Z (into the phone, out of its back). Verified on 3 November 2026 against
+    four iPhone 14 Pro originals: the horizon sat 14 to 34 degrees above the frame centre and the pitch came out at
+    -14 to -34 degrees; the frames were upright and the roll came out within a few degrees of zero.
+
+    Roll is the tilt of the image's horizontal axis after the EXIF orientation is applied: for the usual portrait hold
+    (orientation 6) that axis is the phone's own X; upside down (8) it is reversed; the two landscape holds (1 and 3)
+    use the phone's Y axis, with the sign of that shift not yet checked on a landscape original.
     """
-    x, y, z = acc
-    # gravity in the phone frame (portrait, screen toward the viewer): g = -(x, y, z)
-    gx, gy, gz = -x, -y, -z
-    # the back camera looks along -Z (away from the screen face). Pitch: angle of the optical axis above the horizontal.
     import math
 
+    x, y, z = acc
+    gx, gy, gz = -x, -y, -z  # gravity in the phone frame
     norm = math.sqrt(gx * gx + gy * gy + gz * gz) or 1.0
     gx, gy, gz = gx / norm, gy / norm, gz / norm
-    optical = (0.0, 0.0, -1.0)
-    pitch = math.degrees(math.asin(-(optical[0] * gx + optical[1] * gy + optical[2] * gz)))  # +: axis points up
-    # roll: rotation of the image horizontal about the optical axis. In portrait the image x axis is phone +X (left)...
-    # left as a documented approximation: roll from the gravity component along the image x axis.
-    roll = math.degrees(math.atan2(gx, -gy))
-    if orientation in (6, 8):  # landscape, phone rotated 90 degrees
-        roll = (roll + (90 if orientation == 6 else -90)) % 360
-    roll = (roll + 180) % 360 - 180
+    pitch = math.degrees(math.asin(-gz))  # optical axis (0, 0, +1): above the horizontal when gravity has no +Z part
+    roll = math.degrees(math.atan2(gx, gy))  # portrait: image x along phone X, gravity sits along +Y when level (sign of roll unverified)
+    if orientation == 8:
+        roll += 180.0
+    elif orientation in (1, 3):  # landscape holds: the image x axis is the phone's Y axis (shift sign unverified)
+        roll += 90.0 if orientation == 1 else -90.0
+    roll = (roll + 180.0) % 360.0 - 180.0
     return pitch, roll
 
 

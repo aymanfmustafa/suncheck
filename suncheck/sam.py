@@ -37,19 +37,44 @@ class Detection:
     score: float | None
 
 
-def _mime(path: Path) -> str:
-    s = path.suffix.lower()
-    return {"png": "image/png", "webp": "image/webp", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(s.lstrip("."), "image/jpeg")
+MAX_SIDE = 2048  # what the phone page sends; the mask resolution SAM returns is bounded anyway
+
+
+def prepare_image(path: str | Path, max_side: int = MAX_SIDE) -> tuple[bytes, float]:
+    """JPEG bytes of the photo as the pipeline sees it, and the scale from the photo's pixels to the sent pixels.
+
+    The frame is rotated as its EXIF orientation says (a phone's portrait original is stored landscape) and HEIC is
+    decoded, so SAM sees the same pixels as `pipeline.load_image` and its boxes map back by one factor. The raw file is
+    never sent: SAM rejects HEIC, and a rotated JPEG would come back with boxes in the sensor's frame.
+    """
+    import io
+
+    from PIL import Image, ImageFile, ImageOps
+
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    path = Path(path)
+    if path.suffix.lower() in {".heic", ".heif"}:
+        import pillow_heif
+
+        pillow_heif.register_heif_opener()
+    im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+    scale = 1.0
+    if max(im.size) > max_side:
+        scale = max_side / max(im.size)
+        im = im.resize((max(1, round(im.width * scale)), max(1, round(im.height * scale))), Image.LANCZOS)
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=90)
+    return buf.getvalue(), scale
 
 
 def segment_image(path: str | Path, prompt: str, include_confidence: bool = True, mask_encoding: str = "one_bit",
                   timeout: int = 300) -> dict:
-    """Raw API response for one image and one noun phrase."""
+    """Raw API response for one image and one noun phrase. Boxes come back in the sent image's pixels: see `prepare_image`."""
     key = load_key()
     if not key:
         raise SystemExit("META_API_KEY is not set.")
-    path = Path(path)
-    b64 = base64.b64encode(path.read_bytes()).decode()
+    jpeg, _ = prepare_image(path)
+    b64 = base64.b64encode(jpeg).decode()
     payload = {
         "model": MODEL,
         "stream": False,
@@ -59,7 +84,7 @@ def segment_image(path: str | Path, prompt: str, include_confidence: bool = True
                 "role": "user",
                 "content": [
                     {"type": "input_text", "text": prompt},
-                    {"type": "input_image", "image_url": f"data:{_mime(path)};base64,{b64}"},
+                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"},
                 ],
             }
         ],
@@ -105,9 +130,15 @@ def parse_detections(text: str) -> list[Detection]:
 
 
 def segment_and_parse(path: str | Path, prompt: str, **kw) -> tuple[list[Detection], str, dict]:
+    """Detections in the photo's own pixels (EXIF-rotated frame), whatever size was sent."""
     resp = segment_image(path, prompt, **kw)
     text = output_text(resp)
-    return parse_detections(text), text, resp
+    dets = parse_detections(text)
+    _, scale = prepare_image(path)
+    if scale != 1.0:
+        for d in dets:
+            d.x1, d.y1, d.x2, d.y2 = d.x1 / scale, d.y1 / scale, d.x2 / scale, d.y2 / scale
+    return dets, text, resp
 
 
 MASK_RE = re.compile(r"(?P<id>\d+)<\|box;[^|]*\|><\|mask;x=(?P<x>\d+);y=(?P<y>\d+)(?:;c=[-\d.]+)?;data=(?P<h>\d+),(?P<w>\d+),(?P<payload>[^|]+)\|>")

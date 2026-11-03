@@ -32,7 +32,7 @@ frame gives "No sky in these photos", never a sunny answer.
 uv sync
 printf 'META_API_KEY=...\n' > .env            # git-ignored
 uv run python -m suncheck selftest            # synthetic skyline: geometry round trip, no API calls
-uv run python -m suncheck analyze photos/*.HEIC --out out/spot --advice
+uv run python -m suncheck analyze photos/*.HEIC --out out/spot --advice   # camera-app originals (HEIC or JPEG with EXIF)
 uv run python -m suncheck web --port 8000     # the page, standard library only; results in out/web/<job>/
 python livecheck.py http://localhost:8000 --sample   # end-to-end check of a running server, local or live
 ```
@@ -97,9 +97,21 @@ from Ayman's own balcony.
 
 - Verified: geometry on synthetic data (horizon to 0.02° median, heading and tilt from the sun exact, lens from the sun
   with known tilt exact); the full chain on a real balcony frame and on the generated sample; the page end to end on the
-  Mac at phone size and, for the capture flow, from an iPhone indoors (sensors, 4K stream, upload, SAM, Spark). The live service on Cloud Run ran the same sample upload end to end (SAM, the pose from the sun, the hours,
-  Spark's verdict and a question, every asset) in 33 s on 3 November.
-- Not yet verified: the phone's compass against the sun (the balcony sweep with the sun in a shot), the lens default for
-  the camera stream, the monthly hours against a time-lapse, the bearing scale and the processing sequence on the phone
-  itself, the share sheet on iOS.
+  Mac at phone size and, for the capture flow, from an iPhone indoors (sensors, 4K stream, upload, SAM, Spark). The live
+  service on Cloud Run ran the same sample upload end to end (SAM, the pose from the sun, the hours, Spark's verdict and
+  a question, every asset) in 33 s on 3 November.
+- Verified on 3 November, 16:53, with four iPhone 14 Pro HEIC originals from a balcony (the EXIF path): time, place,
+  true-north heading and the 24 mm lens read from EXIF; Apple's acceleration vector decoded from the maker note (the
+  `exifread` values for that tag are wrong, so it is parsed by hand) and the tilt checked against the horizon in the
+  frames: the camera looked 14° to 34° down and the pitch came out at -14° to -34° once the sign of the optical axis was
+  corrected, with the roll within 6° of level. SAM is sent a JPEG of the EXIF-rotated frame (it rejects HEIC bytes, and a
+  rotated JPEG would return boxes in the sensor's frame), traced the skyline cleanly over the towers, and the four frames
+  covered 131° of horizon from 289° clockwise through north to 70°, which the coverage report now states that way instead
+  of "0 to 359.5". The verdict was honest: the balcony faces north-west to north with walls both sides, so almost no
+  direct sun in any month.
+- Not yet verified: the phone's compass against the sun. The balcony tested faces north-west to north and the November
+  sun sets at 249°, so it never entered a frame; the check needs a shot with the sun in it from a west-facing spot. Also:
+  the lens default for the camera stream, the monthly hours against a time-lapse (the tested balcony gets none, which the
+  table says too, a weak check), the sign of the roll from the accelerometer and the landscape holds, the bearing scale
+  and the processing sequence on the phone itself, the share sheet on iOS.
 - Not yet built: the video, the submission.
