@@ -7,6 +7,8 @@ every month of the year, with the hours of direct sun each month and a plain-Eng
 Built from scratch for the Meta Global AI Developer Hackathon (27 October to 4 November 2026) by Ayman with Claude Code.
 Everything in this folder was written during the hackathon.
 
+**Live:** https://suncheck-447203242444.me-central1.run.app (open it on a phone to sweep a view; a laptop sees the sample).
+
 ## What does the work
 
 - **SAM 3.1** (Meta Model API) segments the sky and finds the sun in each photo.
@@ -100,4 +102,4 @@ from Ayman's own balcony.
 - Not yet verified: the phone's compass against the sun (the balcony sweep with the sun in a shot), the lens default for
   the camera stream, the monthly hours against a time-lapse, the bearing scale and the processing sequence on the phone
   itself, the share sheet on iOS.
-- Not yet built: the public repository, the video, the submission.
+- Not yet built: the video, the submission.
