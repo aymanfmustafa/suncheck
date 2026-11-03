@@ -83,6 +83,14 @@
   .sheet .row { display:flex; align-items:center; justify-content:space-between; height:48px; box-shadow:inset 0 -.5px 0 var(--hair-2); }
   .sheet .row:last-of-type { box-shadow:none; }
   .sheet .row .on { color:var(--gold); }
+  .blk .row { cursor:pointer; height:auto; min-height:48px; padding:9px 0; gap:12px; }
+  .blk .row .k { display:flex; flex-direction:column; gap:2px; min-width:0; width:auto; flex:1; }
+  .blk .row .k span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .blk .row .v { flex:none; padding-left:12px; }
+  .blk .row .k b { font-weight:600; letter-spacing:0; text-transform:none; font-size:15px; color:#fff; }
+  .blk .row.on .k b, .blk .row.on .v { color:var(--gold); }
+  .blk .row .v { white-space:nowrap; }
+  .blk .lead { padding:10px 0 4px; }
   input.field { height:var(--h-ctl); padding:0 14px; border-radius:var(--r-ctl); background:rgba(255,255,255,.08); box-shadow:inset 0 0 0 .5px var(--hair); border:0; outline:none; width:100%; color:var(--fg); }
   input.field:focus { box-shadow:inset 0 0 0 1px var(--gold); }
   input.field::placeholder { color:var(--fg-3); }
@@ -254,6 +262,7 @@
         <div class="list">
           <div class="row" id="proof"><canvas id="proof-c" width="168" height="168"></canvas><div class="v"><b id="proof-h">Checked against the real sun</b><p class="t-call" id="proof-t"></p></div></div>
           <div class="row" id="r-cov"><span class="k t-micro">Horizon</span><div class="v t-call"></div></div>
+          <div class="blk hidden" id="blk"></div>
           <div class="row hidden" id="r-good"><span class="k t-micro">Good for</span><div class="v t-call"></div></div>
           <div class="row hidden" id="r-not"><span class="k t-micro">Not for</span><div class="v t-call"></div></div>
           <div class="row hidden" id="r-tip"><span class="k t-micro">Tip</span><div class="v t-call"></div></div>
@@ -615,7 +624,7 @@
     for (let i = 0; i <= pts.length; i++) { const t = Math.min(hi, i * step); if (t < lo) continue; const lit = i < pts.length && !!pts[i][3]; if (cur === null) { cur = lit; from = t; continue; } if (lit !== cur || i === pts.length || t >= hi) { segs.push([from, t, cur]); cur = lit; from = t; if (t >= hi) break; } }
     const pc = (t) => ((t - lo) / (hi - lo) * 100).toFixed(2) + "%";
     $("band").style.setProperty("--track", segs.length ? `linear-gradient(to right, ${segs.map(([a, b, lit]) => `${lit ? "#F5B342" : "rgba(255,255,255,.22)"} ${pc(a)}, ${lit ? "#F5B342" : "rgba(255,255,255,.22)"} ${pc(b)}`).join(", ")})` : "rgba(255,255,255,.22)");
-    L.t = Math.min(hi, Math.max(lo, L.t)); tr.value = L.t; drawLiving();
+    L.t = Math.min(hi, Math.max(lo, L.t)); tr.value = L.t; priceBlockers(); drawLiving();
   }
   const PLAY = '<path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/>', PAUSE = '<path d="M8 5.5v13M16 5.5v13" stroke-width="2.6"/>';
   function stopPlay() { L.playing = false; cancelAnimationFrame(L.raf); $("play-ic").innerHTML = PLAY; }
@@ -652,6 +661,21 @@
     if (run) runs.push(run);
     for (const r of runs) { if (r.pts.length < 2) continue; stroke(() => { ctx.beginPath(); r.pts.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); }, r.lit ? 2.2 : 1.6, r.lit ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.55)", r.lit ? [] : [4 * unit, 9 * unit]); }
     for (let i = 0; i < pts.length; i++) { const m = i * step; if (m % 180 !== 0 || !pts[i][2] || !up || m < up[0] || m > up[1]) continue; const [x, y] = pts[i]; ctx.save(); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, 3.2 * unit, 0, Math.PI * 2); ctx.fill(); ctx.restore(); label(String(m / 60), x, y - 16 * unit, 20, false); }
+    // what blocks the sun: each named obstruction outlined, the costliest labelled with its price in the chosen month
+    const bl = (S.result.blockers && S.result.blockers.items) || []; const mi = L.month - 1;
+    const shown = bl.map((it) => ({ it, fr: it.frames.find((f) => f.file === p.file) })).filter((x) => x.fr && x.fr.outline.length > 2 && (x.it.hours[mi] >= 0.05 || L.focus === x.it.id));
+    shown.sort((a, b) => b.it.hours[mi] - a.it.hours[mi]);
+    const placed = []; let labelled = 0;  // labels never sit on each other: the costliest wins the spot
+    shown.forEach((x) => {
+      const on = L.focus === x.it.id; const o = x.fr.outline;
+      stroke(() => { ctx.beginPath(); o.forEach((q, j) => j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); }, on ? 2.4 : 1.2, on ? "#F5B342" : "rgba(255,255,255,.5)", on ? [] : [5 * unit, 7 * unit]);
+      if (labelled >= 3 && !on) return;
+      const top = o.reduce((a, q) => (q[1] < a[1] ? q : a), o[0]); const cx = o.reduce((sum, q) => sum + q[0], 0) / o.length;
+      const txt = `${x.it.name} · ${x.it.hours[mi].toFixed(1)} h`; const bw = txt.length * 10.5 * unit, bh = 26 * unit;
+      const lx = Math.max(bw / 2, Math.min(W - bw / 2, cx)), ly = Math.max(bh, top[1] - 16 * unit);
+      if (!on && placed.some((r) => (Math.abs(r[0] - lx) < (r[2] + bw) / 2 && Math.abs(r[1] - ly) < bh) || (r[3] === txt && Math.abs(r[0] - lx) < bw * 1.5))) return;
+      placed.push([lx, ly, bw, txt]); labelled += 1; label(txt, lx, ly, 19, on);
+    });
     // compass bearings ticked along the skyline
     const hz = S.result.horizon; const pu = p.pose_used; if (!hz || !pu) return;
     const R = camMatrix(pu); const f = p.f_px_frame || pu.f_px;
@@ -705,6 +729,41 @@
     $("proof-t").textContent = err != null ? `We found the sun in your photo. The phone's compass had it ${err.toFixed(0)}° off, so every direction was corrected by that much.` : "We found the sun in your photo and set every direction from it, so the paths match your view.";
   }
 
+  // ---- what blocks the sun: SAM named it, our geometry priced it ----
+  function buildBlockers(rep) {
+    const box = $("blk"); box.innerHTML = ""; const b = rep.blockers; const items = (b && b.items) || [];
+    const outside = b ? b.outside_hours : null; const other = b ? b.other_hours : null;
+    const any = items.some((it) => Math.max(...it.hours) >= 0.05) || (outside && outside.some((h) => h >= 0.05));
+    box.classList.toggle("hidden", !any); if (!any) return;
+    const lead = document.createElement("div"); lead.className = "lead t-micro"; lead.id = "blk-lead"; box.appendChild(lead);
+    for (const it of items) {
+      if (Math.max(...it.hours) < 0.05) continue;
+      const row = document.createElement("div"); row.className = "row"; row.dataset.id = it.id;
+      row.innerHTML = `<span class="k t-micro"><b>${it.name}</b><span>${compassName(it.bearing)} · ${Math.round(it.share * 100)}% of the lost sun</span></span><div class="v t-call"></div>`;
+      // tap: the sheet drops and the blocker lights up on the photo with its price; tap again to let it go
+      row.onclick = () => { L.focus = L.focus === it.id ? null : it.id; for (const r of box.querySelectorAll(".row")) r.classList.toggle("on", +r.dataset.id === L.focus); if (L.focus !== null) $("ds").classList.remove("open"); drawLiving(); };
+      box.appendChild(row);
+    }
+    for (const [arr, name] of [[other, "Unnamed obstructions"], [outside, "Outside the photos"]]) {
+      if (!arr || !arr.some((h) => h >= 0.05)) continue;
+      const row = document.createElement("div"); row.className = "row"; row.dataset.id = -1; row.style.cursor = "default";
+      row.innerHTML = `<span class="k t-micro"><b>${name}</b><span>${name === "Outside the photos" ? "not seen, so counted as blocked" : "on the skyline, no name matched"}</span></span><div class="v t-call"></div>`; row.dataset.series = name;
+      box.appendChild(row);
+    }
+    priceBlockers();
+  }
+  function priceBlockers() {
+    const b = S.result && S.result.blockers; if (!b) return; const mi = L.month - 1; const box = $("blk");
+    let shown = 0;  // only what costs the spot sun in this month is listed; a blocker tapped on stays
+    for (const row of box.querySelectorAll(".row")) {
+      const id = +row.dataset.id; let h = 0;
+      if (id >= 0) { const it = b.items.find((x) => x.id === id); h = it ? it.hours[mi] : 0; }
+      else h = (row.dataset.series === "Outside the photos" ? b.outside_hours : b.other_hours)[mi];
+      const on = h >= 0.05 || (id >= 0 && L.focus === id); row.classList.toggle("hidden", !on); if (on) shown += 1;
+      row.querySelector(".v").textContent = h >= 0.05 ? `${h.toFixed(1)} h` : "none";
+    }
+    const lead = $("blk-lead"); if (lead) lead.textContent = shown ? `What blocks the sun in ${MONTHS[mi]} · hours a day lost` : `Nothing in view blocks the sun in ${MONTHS[mi]}`;
+  }
   // ---- the answer ----
   function parseAdvice(text) { const out = {}; if (!text) return out; for (const line of text.split(/\n+/)) { const m = line.match(/^\s*([A-Za-z ]{3,12}):\s*(.*)$/); if (m) out[m[1].trim().toLowerCase()] = m[2].trim(); } return out; }
   function render(rep) {
@@ -725,6 +784,7 @@
     drawProof(rep.photos.find((p) => p.sun_pixel_frame), rep);
     const cov = rep.coverage || {}; const cv = $("r-cov"); cv.classList.toggle("hidden", noSky);
     cv.querySelector(".v").textContent = cov.azimuth_deg ? `You covered ${Math.round(cov.azimuth_deg)}° of the horizon, ${compassName(cov.from_az)} to ${compassName(cov.to_az)}. Directions you didn't photograph count as blocked.` : "";
+    L.focus = null; buildBlockers(rep);
     const adv = parseAdvice(rep.advice);
     for (const [k, id] of [["good for", "r-good"], ["not for", "r-not"], ["tip", "r-tip"]]) { const row = $(id); row.classList.toggle("hidden", !adv[k]); if (adv[k]) row.querySelector(".v").textContent = adv[k]; }
     $("reply").classList.remove("show"); $("q").value = "";

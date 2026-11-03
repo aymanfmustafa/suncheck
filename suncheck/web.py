@@ -11,6 +11,7 @@ import json
 import mimetypes
 import ssl
 import threading
+import time
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -28,6 +29,8 @@ SAMPLE = Path(__file__).resolve().parent / "sample"  # a finished result shipped
 OUT = Path(__file__).resolve().parent.parent / "out" / "web"
 JOBS: dict[str, dict] = {}
 LOCK = threading.Lock()
+CHANGED = threading.Condition(LOCK)  # a job's progress moved: wake the polls waiting on it
+POLL_HOLD_S = 20.0  # a progress poll waits this long for a change before answering, so a request is always in flight
 MAX_BODY = 200 * 1024 * 1024
 
 
@@ -142,16 +145,20 @@ def run_job(job_id: str, photos: list[PhotoInput], opts: Options, job_dir: Path)
                 for fr in partial:
                     fr["frame_url"] = f"/results/{job_id}/{fr['frame']}"
                 JOBS[job_id]["partial"] = partial
+            CHANGED.notify_all()
 
     try:
         with LOCK:
             JOBS[job_id].update(state="running")
+            CHANGED.notify_all()
         rep = _with_urls(analyze_set(photos, opts, job_dir, progress), job_id)
         with LOCK:
             JOBS[job_id].update(state="done", result=rep, progress=1.0, message="Done")
+            CHANGED.notify_all()
     except Exception as e:  # noqa: BLE001
         with LOCK:
             JOBS[job_id].update(state="error", error=f"{type(e).__name__}: {e}", trace=traceback.format_exc())
+            CHANGED.notify_all()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -192,9 +199,17 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/favicon.ico":
             self._send(200, b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#000"/><circle cx="16" cy="16" r="7" fill="#F5B342"/></svg>', "image/svg+xml", cache=True)
         elif path.startswith("/api/job/"):
+            # a long poll: while the job runs, the answer waits for its next progress step (or POLL_HOLD_S), so the page
+            # always has a request open and a host that allocates CPU per request (Cloud Run) keeps the job running
             job_id = path.rsplit("/", 1)[-1]
             with LOCK:
                 job = JOBS.get(job_id)
+                if job and job.get("state") in ("queued", "running"):
+                    seen = (job.get("progress"), job.get("message"), id(job.get("partial")))
+                    deadline = time.monotonic() + POLL_HOLD_S
+                    while (job.get("progress"), job.get("message"), id(job.get("partial"))) == seen \
+                            and job.get("state") in ("queued", "running") and time.monotonic() < deadline:
+                        CHANGED.wait(timeout=deadline - time.monotonic())
                 snap = dict(job) if job else None
             if not snap:
                 snap = load_finished(job_id)

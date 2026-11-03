@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,18 +41,15 @@ class Detection:
 MAX_SIDE = 2048  # what the phone page sends; the mask resolution SAM returns is bounded anyway
 
 
-def prepare_image(path: str | Path, max_side: int = MAX_SIDE) -> tuple[bytes, float]:
-    """JPEG bytes of the photo as the pipeline sees it, and the scale from the photo's pixels to the sent pixels.
+def open_frame(path: str | Path, max_side: int = MAX_SIDE):
+    """The photo as the pipeline sees it: EXIF-rotated, RGB, HEIC decoded, no side longer than `max_side`.
 
-    The frame is rotated as its EXIF orientation says (a phone's portrait original is stored landscape) and HEIC is
-    decoded, so SAM sees the same pixels as `pipeline.load_image` and its boxes map back by one factor. The raw file is
-    never sent: SAM rejects HEIC, and a rotated JPEG would come back with boxes in the sensor's frame.
+    Returns the Pillow image and the scale from the file's pixels to these. Everything downstream (SAM, the sky mask,
+    the horizon, the page's frame copy) works in this one frame, so boxes and masks map back by a single factor.
     """
-    import io
-
     from PIL import Image, ImageFile, ImageOps
 
-    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    ImageFile.LOAD_TRUNCATED_IMAGES = True  # a frame cut short by a flaky upload is still a frame
     path = Path(path)
     if path.suffix.lower() in {".heic", ".heif"}:
         import pillow_heif
@@ -62,6 +60,18 @@ def prepare_image(path: str | Path, max_side: int = MAX_SIDE) -> tuple[bytes, fl
     if max(im.size) > max_side:
         scale = max_side / max(im.size)
         im = im.resize((max(1, round(im.width * scale)), max(1, round(im.height * scale))), Image.LANCZOS)
+    return im, scale
+
+
+@lru_cache(maxsize=16)
+def prepare_image(path: str, max_side: int = MAX_SIDE) -> tuple[bytes, float]:
+    """JPEG bytes of `open_frame(path)` and its scale, cached: one photo is sent to SAM once per noun phrase.
+
+    The raw file is never sent: SAM rejects HEIC, and a rotated JPEG would come back with boxes in the sensor's frame.
+    """
+    import io
+
+    im, scale = open_frame(path, max_side)
     buf = io.BytesIO()
     im.save(buf, "JPEG", quality=90)
     return buf.getvalue(), scale
@@ -73,7 +83,7 @@ def segment_image(path: str | Path, prompt: str, include_confidence: bool = True
     key = load_key()
     if not key:
         raise SystemExit("META_API_KEY is not set.")
-    jpeg, _ = prepare_image(path)
+    jpeg, _ = prepare_image(str(path))
     b64 = base64.b64encode(jpeg).decode()
     payload = {
         "model": MODEL,
@@ -130,15 +140,10 @@ def parse_detections(text: str) -> list[Detection]:
 
 
 def segment_and_parse(path: str | Path, prompt: str, **kw) -> tuple[list[Detection], str, dict]:
-    """Detections in the photo's own pixels (EXIF-rotated frame), whatever size was sent."""
+    """Detections in the pixels of `open_frame(path)`, which is the frame every stage of the pipeline works in."""
     resp = segment_image(path, prompt, **kw)
     text = output_text(resp)
-    dets = parse_detections(text)
-    _, scale = prepare_image(path)
-    if scale != 1.0:
-        for d in dets:
-            d.x1, d.y1, d.x2, d.y2 = d.x1 / scale, d.y1 / scale, d.x2 / scale, d.y2 / scale
-    return dets, text, resp
+    return parse_detections(text), text, resp
 
 
 MASK_RE = re.compile(r"(?P<id>\d+)<\|box;[^|]*\|><\|mask;x=(?P<x>\d+);y=(?P<y>\d+)(?:;c=[-\d.]+)?;data=(?P<h>\d+),(?P<w>\d+),(?P<payload>[^|]+)\|>")

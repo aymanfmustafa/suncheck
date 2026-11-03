@@ -69,6 +69,11 @@ def main(argv=None) -> None:
         print("month  direct-sun hours  first  last")
         for r in rep["monthly_direct_sun_hours"]:
             print(f"{r['month']:>5} {r['direct_sun_hours']:8.2f}  {r['first_sun']} {r['last_sun']}")
+        if rep.get("blockers"):
+            from .blockers import describe
+
+            print("what blocks the sun:")
+            print(describe(rep["blockers"]))
         for n in rep["notes"]:
             print("note:", n)
         if rep.get("advice"):

@@ -25,7 +25,16 @@ def _scene_jpeg_b64(path: Path, long_side: int = 1024) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def build_prompt(table: list[dict], coverage: dict, lat: float, lon: float) -> str:
+def _blockers_text(blockers: dict | None) -> str:
+    if not blockers:
+        return ""
+    from .blockers import describe
+
+    return ("What blocks the sun, from SAM 3.1 segmentation of the photos by noun phrase, with the direct sun our geometry "
+            "charged to each (hours per day lost on the 21st of the month):\n" + describe(blockers) + "\n")
+
+
+def build_prompt(table: list[dict], coverage: dict, lat: float, lon: float, blockers: dict | None = None) -> str:
     rows = "\n".join(f"{r['month']}: {r['direct_sun_hours']:.1f} h of direct sun"
                      + (f", from {r['first_sun']} to {r['last_sun']}" if r["first_sun"] else "")
                      + f" (daylight {r['daylight_hours']:.1f} h)" for r in table)
@@ -47,8 +56,10 @@ def build_prompt(table: list[dict], coverage: dict, lat: float, lon: float) -> s
         f"The photos cover {coverage.get('azimuth_deg', 0):.0f} degrees of the horizon, clockwise from compass "
         f"{coverage.get('from_az')} to {coverage.get('to_az')} (0 north, 90 east, 180 south, 270 west; a range such as "
         f"293 to 60 passes through north); {outside}.\n"
-        "The attached photo is one of the user's frames: name in a few words what blocks the sun (for example 'a nine-storey "
-        "block to the west' or 'the neighbour's trees'); if nothing blocks it, say so.\n\n"
+        f"{_blockers_text(blockers)}"
+        "The attached photo is one of the user's frames: name in a few words what blocks the sun, using the blockers and "
+        "hours listed where there are any (for example 'the tower to the west, 2 hours a day' or 'your own overhang in "
+        "summer'); if nothing blocks it, say so.\n\n"
         "Write under 110 words of plain English, no markdown, exactly these five lines, each starting with its label:\n"
         "Verdict: one sentence on the kind of sun this spot gets (time of day, seasons), naming the strongest and weakest months with their hours.\n"
         "Blocked by: what blocks the sun, from the photo.\n"
@@ -89,6 +100,7 @@ def answer_question(report: dict, question: str, model: str = DEFAULT_MODEL, tim
         f"Location: latitude {place.get('lat', 0):.2f}, longitude {place.get('lon', 0):.2f}.\n"
         f"Direct sun on the 21st of each month (local time):\n{rows}\n"
         f"Photos cover {cov.get('azimuth_deg', 0):.0f} degrees of the horizon, clockwise from compass {cov.get('from_az')} to {cov.get('to_az')}.\n"
+        f"{_blockers_text(report.get('blockers'))}"
         f"Result card already shown to the user:\n{report.get('advice') or '(none)'}\n\n"
         f"Question: {question.strip()}"
     )
@@ -96,11 +108,11 @@ def answer_question(report: dict, question: str, model: str = DEFAULT_MODEL, tim
 
 
 def write_advice(table: list[dict], coverage: dict, lat: float, lon: float, scene_path: Path | None = None,
-                 model: str = DEFAULT_MODEL, timeout: int = 180) -> str:
+                 model: str = DEFAULT_MODEL, timeout: int = 180, blockers: dict | None = None) -> str:
     key = load_key()
     if not key:
         raise RuntimeError("META_API_KEY is not set")
-    content: list[dict] = [{"type": "text", "text": build_prompt(table, coverage, lat, lon)}]
+    content: list[dict] = [{"type": "text", "text": build_prompt(table, coverage, lat, lon, blockers)}]
     if scene_path is not None:
         content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_scene_jpeg_b64(Path(scene_path))}"}})
     payload = {"model": model, "max_tokens": 4000, "reasoning_effort": "low", "messages": [{"role": "user", "content": content}]}

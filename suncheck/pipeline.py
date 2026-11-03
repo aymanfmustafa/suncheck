@@ -98,6 +98,7 @@ class PhotoInput:
 @dataclass
 class Options:
     outside: str = "blocked"
+    blockers: bool = True  # name what blocks the sun (SAM 3.1 noun phrases) and charge the lost minutes to it
     use_sam: bool = True
     pose: str = "sun"  # "sun": where the sun is in frame its solved pose replaces the sensor pose; "sensors": never
     advice: bool = False
@@ -106,14 +107,10 @@ class Options:
 
 
 def load_image(path: Path) -> np.ndarray:
-    from PIL import Image, ImageFile, ImageOps
+    """The photo as every stage sees it (EXIF-rotated, at most 2048 px on the long side: see `sam.open_frame`)."""
+    from .sam import open_frame
 
-    ImageFile.LOAD_TRUNCATED_IMAGES = True  # a frame cut short by a flaky upload is still a frame
-    if path.suffix.lower() in {".heic", ".heif"}:
-        import pillow_heif
-
-        pillow_heif.register_heif_opener()
-    im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+    im, _ = open_frame(path)
     return np.asarray(im)
 
 
@@ -247,9 +244,14 @@ def analyze_set(photos: list[PhotoInput], opts: Options, out_dir: Path, progress
 
     # load frames, settle the lens and the time
     frames: list[dict] = []
+    from .sam import open_frame
+
     for p in photos:
-        rgb = load_image(p.path)
+        im, load_scale = open_frame(p.path)
+        rgb = np.asarray(im)
         h, w = rgb.shape[:2]
+        if p.sun_pixel is not None and load_scale != 1.0:
+            p.sun_pixel = (p.sun_pixel[0] * load_scale, p.sun_pixel[1] * load_scale)
         if p.f_px:
             f_px, f_source = p.f_px, "given"
         elif p.f35:
@@ -267,7 +269,9 @@ def analyze_set(photos: list[PhotoInput], opts: Options, out_dir: Path, progress
                        "time_source": time_source, "sun_az": float(az_s), "sun_el": float(el_s)})
 
     # SAM 3.1: the sun and the sky, every frame at once
-    say("Finding the sky and the sun in each photo", 0.05)
+    from .blockers import BLOCKER_PHRASES, attribute, label_map, segment_blockers
+
+    say("Finding the sky, the sun and what blocks it" if opts.blockers else "Finding the sky and the sun in each photo", 0.05)
     tasks = []
     with ThreadPoolExecutor(max_workers=max(1, opts.workers)) as ex:
         for i, fr in enumerate(frames):
@@ -280,6 +284,9 @@ def analyze_set(photos: list[PhotoInput], opts: Options, out_dir: Path, progress
                 fr["sun_uv"], fr["sun_source"] = None, "not looked for" if fr["sun_el"] <= 0 else "sam off"
             if opts.use_sam:
                 tasks.append((i, "sky", ex.submit(_sam_sky, p.path, fr["h"], fr["w"])))
+            if opts.use_sam and opts.blockers:
+                for phrase in BLOCKER_PHRASES:
+                    tasks.append((i, f"blocker:{phrase}", ex.submit(segment_blockers, p.path, fr["h"], fr["w"], phrase)))
         done = 0
         for i, kind, fut in tasks:
             fr = frames[i]
@@ -287,8 +294,10 @@ def analyze_set(photos: list[PhotoInput], opts: Options, out_dir: Path, progress
                 res = fut.result()
                 if kind == "sun":
                     fr["sun_uv"], fr["sun_source"] = res
-                else:
+                elif kind == "sky":
                     fr["sky"], fr["sky_source"] = res
+                else:
+                    fr.setdefault("instances", []).extend(res)
             except Exception as e:  # noqa: BLE001
                 report["notes"].append(f"{fr['p'].name}: SAM {kind} failed ({type(e).__name__}: {str(e)[:100]})")
                 if kind == "sun":
@@ -296,12 +305,15 @@ def analyze_set(photos: list[PhotoInput], opts: Options, out_dir: Path, progress
                     blob = brightest_blob(gray)
                     fr["sun_uv"], fr["sun_source"] = blob, "brightest blob" if blob else "none"
             done += 1
-            say(f"Finding the sky and the sun ({done} of {len(tasks)})", 0.05 + 0.6 * done / max(1, len(tasks)))
+            what = "the sky, the sun and what blocks it" if opts.blockers else "the sky and the sun"
+            say(f"Finding {what} ({done} of {len(tasks)})", 0.05 + 0.6 * done / max(1, len(tasks)))
     for fr in frames:
         if "sky" not in fr:
             fr["sky"], fr["sky_source"] = sky_mask_fallback(fr["rgb"]), "colour fallback"
         fr.setdefault("sun_uv", None)
         fr.setdefault("sun_source", "none")
+        fr.setdefault("instances", [])
+        fr["labels"] = label_map(fr["instances"], fr["sky"])
     # the page can start tracing skylines while the rest is computed
     partial = []
     for fr in frames:
@@ -407,6 +419,13 @@ def analyze_set(photos: list[PhotoInput], opts: Options, out_dir: Path, progress
         report["notes"].append("no sky in any photo; the spot is counted as fully blocked")
     table = monthly_table(lat, lon, year, tz, merged, outside=opts.outside)
     today = frames[0]["taken"].astimezone(timezone(timedelta(hours=tz))).date()
+    report["blockers"] = None
+    if opts.blockers and opts.use_sam and not no_sky:
+        say("Charging the lost sun to what blocks it", 0.84)
+        try:
+            report["blockers"] = attribute(frames, lat, lon, year, tz, merged, opts.outside)
+        except Exception as e:  # noqa: BLE001
+            report["notes"].append(f"blockers unavailable ({type(e).__name__}: {str(e)[:120]})")
     for fr in frames:
         p, pose = fr["p"], fr["final"]
         bgr = cv2.cvtColor(fr["rgb"], cv2.COLOR_RGB2BGR)
@@ -427,6 +446,7 @@ def analyze_set(photos: list[PhotoInput], opts: Options, out_dir: Path, progress
         fr["entry"]["f_px_frame"] = pose.f_px * fr["scale"]  # so the page can draw the sun at its true angular size
         if fr["sun_uv"] is not None:
             fr["entry"]["sun_pixel_frame"] = [fr["sun_uv"][0] * fr["scale"], fr["sun_uv"][1] * fr["scale"]]
+        fr["entry"]["blockers"] = fr.get("global_ids", [])
         report["photos"].append(fr["entry"])
 
     report["monthly_direct_sun_hours"] = table
@@ -457,7 +477,7 @@ def analyze_set(photos: list[PhotoInput], opts: Options, out_dir: Path, progress
             from .advice import write_advice
 
             scene = next((fr["p"].path for fr in frames if fr["sun_uv"] is not None), frames[0]["p"].path)
-            report["advice"] = write_advice(table, report["coverage"], lat, lon, scene)
+            report["advice"] = write_advice(table, report["coverage"], lat, lon, scene, blockers=report.get("blockers"))
         except Exception as e:  # noqa: BLE001
             report["advice"] = None
             report["notes"].append(f"advice unavailable ({type(e).__name__}: {str(e)[:120]})")

@@ -11,11 +11,14 @@ Everything in this folder was written during the hackathon.
 
 ## What does the work
 
-- **SAM 3.1** (Meta Model API) segments the sky and finds the sun in each photo.
+- **SAM 3.1** (Meta Model API) segments the sky and finds the sun in each photo, and names what blocks the sun: every
+  building, tree, plant, wall, railing, overhang and hill, each asked for by its noun phrase and returned as a mask.
 - **Our code** does the measurement: solar position (NOAA algorithm, checked against `astral` to 0.46°), a pinhole camera
   model with the phone's tilt from its accelerometer, the heading and the lens solved from the sun's position in the frame,
-  the horizon profile from the sky mask (one obstruction elevation per half degree of azimuth), and the minute-by-minute
-  count of direct sun on the 21st of each month.
+  the horizon profile from the sky mask (one obstruction elevation per half degree of azimuth), the minute-by-minute
+  count of direct sun on the 21st of each month, and the bill: every blocked minute of every month is charged to the
+  obstruction that hid the sun at that moment (its direction projected into the photo that covers it, the mask under
+  that pixel takes the blame), so each blocker carries the hours a day it costs the spot in each month.
 - **Muse Spark 1.3** words the result (what blocks the sun, good for, not for, one tip) from our numbers and answers the
   user's questions about the spot with the numbers in context.
 - **Muse Image** generated the sample view shipped with the app (`suncheck/sample/`), which then went through the same
@@ -58,7 +61,8 @@ live as long as the instance (an idle spell or a redeploy clears them); the samp
 
 `suncheck/solar.py` sun position and day paths · `camera.py` pinhole model, pose from the sun, pose from the phone's
 orientation angles · `exifmeta.py` EXIF (GPS, time, heading, lens) · `horizon.py` sky mask to horizon profile ·
-`hours.py` monthly table and the labelled overlay · `pipeline.py` the whole chain for a set of photos (`analyze_set`),
+`hours.py` monthly table and the labelled overlay · `blockers.py` what blocks the sun and what it costs (SAM's named
+masks, the per-minute attribution, one object across overlapping photos) · `pipeline.py` the whole chain for a set of photos (`analyze_set`),
 the words of the answer, the frame assets the page animates · `sam.py` SAM 3.1 client and mask decoding ·
 `advice.py` Spark card and questions · `card.py` the share card · `web.py` the job API and static server ·
 `static/index.html` the page · `sample/` the shipped sample result · `cli.py` the command line.
@@ -78,12 +82,15 @@ One page, four screens, phone first:
 4. **Result.** The photo is the whole screen. The time large and thin at the top with "In sun" / "In shade"; the sun
    crossing the user's own sky, hidden by the real skyline (the SAM mask), drawn at its true angular size, the scene warm
    in sun and cool in shade; the month's path drawn on the sky, solid where lit and dotted where blocked, with hour marks;
-   compass bearings ticked along the skyline; the contour kept faintly. Over the bottom: hours of sun a day by month
+   compass bearings ticked along the skyline; the contour kept faintly; each blocker that costs the spot sun in the chosen
+   month outlined with its price ("Building · 0.3 h"). Over the bottom: hours of sun a day by month
    (tap a month), the answer in one sentence ("Afternoon sun, 1 to 4 hours a day. From about 13:30 until about 16:45.
    Most in March, least in June."), and a day band from sunrise to sunset, gold where lit, with a cursor to drag. On
    arrival the skyline traces itself, the sun runs its day, then the words come up. "Details" (or a swipe up) opens a sheet:
    checked against the real sun (a crop of the real sun with our ring and the compass error), how much of the horizon was
-   covered, good for / not for / tip, a question box answered by Spark, Share (a 4:5 card), Another spot.
+   covered, what blocks the sun in the chosen month with the hours a day each blocker costs (tap one to light its outline
+   on the photo; "outside the photos" is listed as what it is, the limit of the photos, never as a wall), good for / not
+   for / tip, a question box answered by Spark, Share (a 4:5 card), Another spot.
 
 ## Design (decisions of 3 November)
 
@@ -112,6 +119,12 @@ from Ayman's own balcony.
   covered 131° of horizon from 289° clockwise through north to 70°, which the coverage report now states that way instead
   of "0 to 359.5". The verdict was honest: the balcony faces north-west to north with walls both sides, so almost no
   direct sun in any month.
+- Verified on 3 November, evening: the blockers on the sample (seven far towers and the potted olive tree named by SAM,
+  each charged the minutes it hides the sunset in winter; Spark's "Blocked by" line names them from the table) and on
+  the balcony originals (the side wall charged the June evening; everything else the photos cannot see is reported as
+  outside the photos, not as a blocker). Added the same evening: the progress poll holds its request open until the next
+  step, so a host that allocates CPU per request (Cloud Run on request-based billing) runs the job at full speed; every
+  frame is worked at no more than 2048 px on the long side.
 - Not yet verified: the phone's compass against the sun. The balcony tested faces north-west to north and the November
   sun sets at 249°, so it never entered a frame; the check needs a shot with the sun in it from a west-facing spot. Also:
   the lens default for the camera stream, the monthly hours against a time-lapse (the tested balcony gets none, which the
