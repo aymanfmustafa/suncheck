@@ -13,6 +13,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("base")
 ap.add_argument("--sample", action="store_true")
 ap.add_argument("--job")
+ap.add_argument("--files", nargs="+", help="upload mode: camera-app originals with EXIF (HEIC or JPEG)")
+ap.add_argument("--question", default="Is this spot good for tomatoes?")
 ap.add_argument("--project", default=str(Path(__file__).resolve().parent))
 a = ap.parse_args()
 base = a.base.rstrip("/")
@@ -42,7 +44,10 @@ def post_json(path, obj):
 
 t0 = time.time()
 print("health:", get("/api/health")[1])
-if a.sample:
+if a.files:
+    meta = {"mode": "upload", "spot": "balcony", "advice": True}
+    files = [("photos", Path(f).name, Path(f).read_bytes(), "image/heic" if f.lower().endswith(".heic") else "image/jpeg") for f in a.files]
+elif a.sample:
     frame = proj / "suncheck/sample/sample_frame.jpg"
     meta = {"mode": "upload", "lat": 25.2, "lon": 55.27, "tz_min": 240, "taken": "2026-11-03 16:45", "spot": "balcony", "advice": True}
     files = [("photos", "sample_frame.jpg", frame.read_bytes(), "image/jpeg")]
@@ -93,6 +98,6 @@ for key in ("overlay_url", "overlay_all_url", "sky_url", "frame_url"):
 if rep.get("card_url"):
     st, data = get(rep["card_url"], binary=True)
     print(f"  card {rep['card_url']}: {st} {len(data)} bytes")
-st, ans = post_json("/api/ask", {"job": job, "question": "Is this spot good for tomatoes?"})
+st, ans = post_json("/api/ask", {"job": job, "question": a.question})
 print("ask:", st, json.dumps(ans)[:300])
 print(f"result page: {base}/?job={job}   total {time.time()-t0:.1f}s")

@@ -26,6 +26,7 @@ from .pipeline import Options, PhotoInput, analyze_set, photo_from_file
 
 STATIC = Path(__file__).resolve().parent / "static"
 SAMPLE = Path(__file__).resolve().parent / "sample"  # a finished result shipped with the app, for visitors without a phone
+SHIPPED = Path(__file__).resolve().parent / "shipped"  # more finished results shipped with the app, one folder per job id
 OUT = Path(__file__).resolve().parent.parent / "out" / "web"
 JOBS: dict[str, dict] = {}
 LOCK = threading.Lock()
@@ -129,6 +130,8 @@ def load_finished(job_id: str) -> dict | None:
     path = OUT / job_id / "report.json"
     if not path.is_file() and job_id == "sample":
         path = SAMPLE / "report.json"
+    if not path.is_file() and (SHIPPED / job_id / "report.json").is_file():
+        path = SHIPPED / job_id / "report.json"
     if not path.is_file():
         return None
     rep = _with_urls(json.loads(path.read_text()), job_id)
@@ -195,7 +198,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/results/sample/") and not (OUT / "sample").is_dir():
             self._file(SAMPLE, path[len("/results/sample/"):], cache=True)
         elif path.startswith("/results/"):
-            self._file(OUT, path[len("/results/"):], cache=True)
+            rel = path[len("/results/"):]
+            job = rel.split("/", 1)[0]
+            base = SHIPPED if (not (OUT / job).is_dir() and (SHIPPED / job).is_dir()) else OUT
+            self._file(base, rel, cache=True)
         elif path == "/favicon.ico":
             self._send(200, b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#000"/><circle cx="16" cy="16" r="7" fill="#F5B342"/></svg>', "image/svg+xml", cache=True)
         elif path.startswith("/api/job/"):

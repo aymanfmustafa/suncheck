@@ -125,12 +125,18 @@ def photo_from_file(path: Path, lat=None, lon=None, tz=None, taken_local: str | 
                    f35=f35 if f35 is not None else meta.f35_mm, sun_pixel=sun_pixel,
                    sensors={"exif_heading": meta.heading_deg, "heading_ref": meta.heading_ref,
                             "acceleration": meta.acceleration, "orientation": meta.orientation, "camera": meta.make_model})
+    if p.tz is None and p.lon is not None:
+        p.tz = float(round(p.lon / 15.0))  # older phones write no zone offset: the longitude's zone is the honest guess
+        p.sensors["tz_source"] = "longitude"
     if taken_local:
         tz_used = p.tz if p.tz is not None else 4.0
         p.taken_utc = (datetime.fromisoformat(taken_local) - timedelta(hours=tz_used)).replace(tzinfo=timezone.utc)
         p.time_source = "given"
     elif meta.taken_utc:
         p.taken_utc, p.time_source = meta.taken_utc, "exif"
+    elif meta.taken_local and p.tz is not None:
+        p.taken_utc = (meta.taken_local - timedelta(hours=p.tz)).replace(tzinfo=timezone.utc)
+        p.time_source = "exif clock, zone from longitude"
     if yaw is not None:
         p.yaw, p.heading_source = yaw, "given"
     elif meta.heading_deg is not None:
@@ -238,8 +244,8 @@ def analyze_set(photos: list[PhotoInput], opts: Options, out_dir: Path, progress
     if lat is None or lon is None:
         raise ValueError("no location: the photos carry no GPS and none was given")
     if tz is None:
-        tz = 4.0
-        report["notes"].append("no time-zone offset known; clock times assume UTC+4")
+        tz = float(round(lon / 15.0))
+        report["notes"].append(f"no time-zone offset in the photos; clock times use the zone of the longitude (UTC{tz:+.0f})")
     report["place"] = {"lat": lat, "lon": lon, "tz": tz}
 
     # load frames, settle the lens and the time
