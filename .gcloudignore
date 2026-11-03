@@ -1,0 +1,10 @@
+.venv/
+.env
+.certs/
+captures/
+out/
+__pycache__/
+*.pyc
+*.egg-info/
+.DS_Store
+.git/

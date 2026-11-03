@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Suncheck</title>
+<style>
+  /* system: 4pt grid; type 28/17/15/13/11; radii 12 (controls) 20 (surfaces) 999 (pills); control height 44, primary 56 */
+  :root {
+    --bg:#000; --fg:#F5F5F7; --fg-2:rgba(235,235,245,.62); --fg-3:rgba(235,235,245,.32); --hair:rgba(255,255,255,.14); --hair-2:rgba(255,255,255,.08);
+    --glass:rgba(30,30,32,.58); --glass-2:rgba(60,60,64,.5); --gold:#F5B342; --gold-2:#C98A1E; --green:#34C759; --amber:#FF9F0A;
+    --r-ctl:12px; --r-surf:20px; --h-ctl:44px; --h-cta:56px; --ease:cubic-bezier(.2,.8,.2,1); --t-fast:.2s; --t-base:.32s; --t-slow:.6s;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; font-size:17px; line-height:22px; -webkit-text-size-adjust:100%; }
+  body { min-height:100dvh; }
+  button, input { font-family:inherit; font-size:inherit; color:inherit; }
+  button { cursor:pointer; background:none; border:0; padding:0; }
+  svg.i { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; display:block; }
+  .t-title { font-size:28px; line-height:34px; font-weight:700; letter-spacing:-0.4px; }
+  .t-body { font-size:17px; line-height:22px; }
+  .t-call { font-size:15px; line-height:20px; }
+  .t-cap { font-size:13px; line-height:18px; }
+  .t-micro { font-size:11px; line-height:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+  .num { font-variant-numeric:tabular-nums; }
+  .c2 { color:var(--fg-2); } .c3 { color:var(--fg-3); }
+  .glass { background:var(--glass); -webkit-backdrop-filter:blur(20px) saturate(160%); backdrop-filter:blur(20px) saturate(160%); box-shadow:inset 0 0 0 .5px var(--hair); }
+  .pill { height:36px; padding:0 14px; border-radius:999px; display:inline-flex; align-items:center; gap:8px; font-size:15px; font-weight:600; color:#fff; }
+  .pill svg.i { width:18px; height:18px; }
+  .screen { position:relative; }
+  .hidden { display:none !important; }
+  .fade-in { animation:fadeIn var(--t-base) var(--ease); }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  @media (min-width: 520px) { body { background:#0A0A0B; } .frame { max-width:430px; margin:0 auto; background:#000; min-height:100dvh; box-shadow:0 0 0 .5px var(--hair); } }
+  .frame { position:relative; }
+
+  /* camera */
+  .vf { position:relative; height:100dvh; max-height:100dvh; background:#000; overflow:hidden; }
+  .vf video { width:100%; height:100%; object-fit:cover; display:block; }
+  .live { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .vf .top { position:absolute; left:16px; right:16px; top:calc(12px + env(safe-area-inset-top)); display:flex; justify-content:space-between; align-items:center; }
+  .vf .hint { position:absolute; left:16px; right:16px; top:calc(60px + env(safe-area-inset-top)); text-align:center; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.7); transition:opacity var(--t-base); }
+  .settle { display:none; }
+  .settle.show { display:inline-flex; }
+  .settle i { width:7px; height:7px; border-radius:50%; background:var(--gold); animation:pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:.3 } 50% { opacity:1 } }
+  .sunmark { position:absolute; width:56px; height:56px; margin:-28px 0 0 -28px; border-radius:50%; border:2px solid var(--gold); box-shadow:0 0 0 .5px rgba(0,0,0,.5), 0 0 32px rgba(245,179,66,.45); display:none; }
+  .sunmark.show { display:block; }
+  .bar { position:absolute; left:0; right:0; bottom:0; padding:28px 24px calc(24px + env(safe-area-inset-bottom)); background:linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.65) 40%); display:grid; grid-template-columns:1fr auto 1fr; align-items:center; }
+  .last { width:44px; height:44px; border-radius:var(--r-ctl); overflow:hidden; background:rgba(255,255,255,.08); box-shadow:inset 0 0 0 .5px var(--hair); position:relative; }
+  .last img { width:100%; height:100%; object-fit:cover; display:block; animation:fadeIn var(--t-base); }
+  .last b { position:absolute; right:-6px; top:-6px; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--gold); color:#1A1200; font-size:12px; line-height:20px; font-weight:700; text-align:center; display:none; }
+  .last b.show { display:block; }
+  .shutter { width:72px; height:72px; border-radius:50%; border:3px solid #fff; display:grid; place-items:center; justify-self:center; }
+  .shutter i { width:58px; height:58px; border-radius:50%; background:#fff; display:block; transition:transform var(--t-fast) var(--ease); }
+  .shutter:active i { transform:scale(.88); }
+  .done { justify-self:end; opacity:0; transform:translateY(6px); transition:opacity var(--t-base), transform var(--t-base) var(--ease); pointer-events:none; }
+  .done.ready { opacity:1; transform:none; pointer-events:auto; }
+  .gate { position:absolute; inset:0; background:#000; display:flex; flex-direction:column; justify-content:flex-end; padding:0 24px calc(28px + env(safe-area-inset-bottom)); transition:opacity var(--t-slow) var(--ease); }
+  .gate.off { opacity:0; pointer-events:none; }
+  .gate-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 20%; opacity:.62; }
+  .gate-g { position:absolute; inset:0; background:linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,0) 30%, rgba(0,0,0,.15) 55%, rgba(0,0,0,.92) 100%); }
+  .gate > *:not(.gate-bg):not(.gate-g) { position:relative; }
+  #gate .wordmark { position:absolute; }
+  .wordmark { position:absolute; top:calc(16px + env(safe-area-inset-top)); left:24px; display:flex; align-items:center; gap:9px; font-weight:700; letter-spacing:-.2px; }
+  .wordmark i { width:10px; height:10px; border-radius:50%; background:var(--gold); display:inline-block; }
+  .gate .arc { position:absolute; left:24px; right:24px; top:30%; height:132px; }
+  .gate h1 { margin:0 0 8px; }
+  .gate p { margin:0 0 24px; max-width:32ch; }
+  .cta { width:100%; height:var(--h-cta); border-radius:16px; background:#fff; color:#000; font-weight:600; transition:transform var(--t-fast) var(--ease), opacity var(--t-fast); }
+  .cta:active { transform:scale(.985); }
+  .cta[disabled] { opacity:.5; }
+  .secondary { width:100%; height:var(--h-ctl); border-radius:var(--r-ctl); background:rgba(255,255,255,.08); box-shadow:inset 0 0 0 .5px var(--hair); font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .secondary:active { background:rgba(255,255,255,.14); }
+  .textbtn { height:var(--h-ctl); color:var(--fg-2); font-weight:500; }
+  .sheet { position:absolute; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); border-radius:var(--r-surf); padding:20px; transform:translateY(16px); opacity:0; pointer-events:none; transition:transform var(--t-base) var(--ease), opacity var(--t-base); }
+  .sheet.show { transform:none; opacity:1; pointer-events:auto; }
+  .sheet h2 { margin:0 0 4px; font-size:17px; line-height:22px; font-weight:600; }
+  .sheet p { margin:0 0 16px; }
+  .sheet .row { display:flex; align-items:center; justify-content:space-between; height:48px; box-shadow:inset 0 -.5px 0 var(--hair-2); }
+  .sheet .row:last-of-type { box-shadow:none; }
+  .sheet .row .on { color:var(--gold); }
+  input.field { height:var(--h-ctl); padding:0 14px; border-radius:var(--r-ctl); background:rgba(255,255,255,.08); box-shadow:inset 0 0 0 .5px var(--hair); border:0; outline:none; width:100%; color:var(--fg); }
+  input.field:focus { box-shadow:inset 0 0 0 1px var(--gold); }
+  input.field::placeholder { color:var(--fg-3); }
+
+  /* processing: the frame stays, the skyline is traced */
+  .proc { position:relative; height:100dvh; background:#000; overflow:hidden; }
+  .proc img { width:100%; height:100%; object-fit:cover; display:block; filter:brightness(.75); transition:opacity var(--t-slow); }
+  .proc svg { position:absolute; inset:0; width:100%; height:100%; }
+  .proc path { fill:none; stroke:#fff; stroke-width:2.4; stroke-linejoin:round; stroke-linecap:round; filter:drop-shadow(0 0 4px rgba(0,0,0,.9)); }
+  .proc .status { position:absolute; left:16px; right:16px; bottom:calc(28px + env(safe-area-inset-bottom)); display:flex; justify-content:center; }
+  .proc .status .pill { height:40px; }
+  .proc .status .pill b { font-weight:600; } .proc .status .pill span { color:var(--fg-2); font-weight:500; }
+  .proc .wait { position:absolute; left:24px; right:24px; top:40%; height:132px; }
+
+  /* result: the photo is the screen */
+  .res { position:relative; height:100dvh; overflow:hidden; background:#000; }
+  .res canvas#living { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; transition:filter var(--t-slow) var(--ease); }
+  .res .warm { position:absolute; inset:0; background:var(--gold); mix-blend-mode:soft-light; opacity:0; transition:opacity var(--t-slow) var(--ease); pointer-events:none; }
+  .res.lit canvas#living { filter:brightness(1.04) saturate(1.08); } .res.lit .warm { opacity:.22; }
+  .res.shade canvas#living { filter:brightness(.84) saturate(.86); }
+  .res.night canvas#living { filter:brightness(.5) saturate(.6); }
+  .res .trace { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .res .trace path { fill:none; stroke:#fff; stroke-width:2.4; stroke-linejoin:round; stroke-linecap:round; filter:drop-shadow(0 0 4px rgba(0,0,0,.9)); opacity:0; transition:opacity 1.2s ease; }
+  .res .trace path.on { opacity:1; }
+  .res .trace path.dim { opacity:.5; stroke-width:1.6; }
+  .res .top-g { position:absolute; left:0; right:0; top:0; height:220px; background:linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,0)); pointer-events:none; }
+  .res .bot-g { position:absolute; left:0; right:0; bottom:0; height:64%; background:linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.5) 42%, rgba(0,0,0,.84)); pointer-events:none; }
+  .clock { position:absolute; left:20px; top:calc(8px + env(safe-area-inset-top)); color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.5); }
+  .clock .big { font-family:ui-rounded, -apple-system, system-ui, sans-serif; font-weight:200; font-size:60px; line-height:64px; letter-spacing:-1.5px; }
+  .clock .st { font-size:15px; line-height:20px; font-weight:600; color:rgba(255,255,255,.72); }
+  .clock .st.lit { color:var(--gold); }
+  .words { position:absolute; left:0; right:0; bottom:0; padding:0 20px calc(10px + env(safe-area-inset-bottom)); color:#fff; opacity:0; transform:translateY(12px); transition:opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease); }
+  .words.in { opacity:1; transform:none; }
+  .mlabel { color:rgba(255,255,255,.5); margin-bottom:4px; text-shadow:0 1px 2px rgba(0,0,0,.5); }
+  .mrow { display:grid; grid-template-columns:repeat(12,1fr); margin:0 -10px 16px; }
+  .mrow button { display:flex; flex-direction:column; align-items:center; gap:2px; padding:5px 0 6px; color:rgba(255,255,255,.5); font-size:10px; font-weight:600; border-bottom:2px solid transparent; transition:color var(--t-fast), border-color var(--t-fast); text-shadow:0 1px 2px rgba(0,0,0,.5); overflow:hidden; }
+  .mrow button small { font-size:10px; line-height:12px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  .mrow button.on { color:#fff; border-bottom-color:var(--gold); }
+  .mrow button.on small { color:var(--gold); }
+  .words h1 { margin:0 0 4px; font-size:30px; line-height:34px; letter-spacing:-0.5px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,.5); }
+  .words .sub { margin:0 0 22px; color:rgba(255,255,255,.72); text-shadow:0 1px 2px rgba(0,0,0,.5); }
+  .replay { position:absolute; right:16px; top:calc(16px + env(safe-area-inset-top)); width:40px; height:40px; border-radius:50%; background:rgba(0,0,0,.35); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); box-shadow:inset 0 0 0 .5px var(--hair); display:grid; place-items:center; color:#fff; }
+  .replay svg.i { width:18px; height:18px; }
+  /* the day band: the day as a strip, gold where the spot is lit, a cursor to drag */
+  .day { position:relative; height:52px; touch-action:none; cursor:ew-resize; }
+  .band { position:absolute; left:0; right:0; top:22px; height:10px; border-radius:2px; background:var(--track, rgba(255,255,255,.22)); box-shadow:inset 0 0 0 .5px rgba(255,255,255,.15); }
+  .ticks { position:absolute; left:0; right:0; top:34px; height:16px; }
+  .ticks i { position:absolute; top:0; width:1px; height:5px; background:rgba(255,255,255,.4); }
+  .ticks span { position:absolute; top:6px; transform:translateX(-50%); font-size:10px; line-height:12px; font-weight:600; color:rgba(255,255,255,.5); font-variant-numeric:tabular-nums; }
+  .cursor { position:absolute; top:14px; width:2px; height:26px; margin-left:-1px; background:#fff; border-radius:1px; box-shadow:0 0 0 .5px rgba(0,0,0,.4); }
+  .cursor span { position:absolute; left:50%; top:-18px; transform:translateX(-50%); font-size:12px; line-height:14px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6); white-space:nowrap; }
+  .more-btn { display:flex; justify-content:center; align-items:center; gap:6px; margin-top:8px; color:rgba(255,255,255,.65); font-size:13px; font-weight:600; width:100%; height:34px; }
+  .more-btn svg.i { width:16px; height:16px; }
+  .ds { position:absolute; left:0; right:0; bottom:0; max-height:88dvh; border-radius:var(--r-surf) var(--r-surf) 0 0; background:rgba(22,22,24,.88); -webkit-backdrop-filter:blur(24px) saturate(160%); backdrop-filter:blur(24px) saturate(160%); box-shadow:0 -0.5px 0 var(--hair); transform:translateY(100%); transition:transform var(--t-base) var(--ease); display:flex; flex-direction:column; }
+  .ds.open { transform:none; }
+  .ds .grab { height:30px; display:grid; place-items:center; flex:none; width:100%; }
+  .ds .grab i { width:36px; height:5px; border-radius:3px; background:rgba(255,255,255,.3); display:block; }
+  .ds .body { overflow-y:auto; padding:0 16px calc(24px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling:touch; }
+  .frames { display:flex; gap:8px; margin:4px 0 12px; overflow-x:auto; scrollbar-width:none; }
+  .frames::-webkit-scrollbar { display:none; }
+  .frames button { width:48px; height:48px; border-radius:var(--r-ctl); overflow:hidden; flex:none; opacity:.45; box-shadow:inset 0 0 0 .5px var(--hair); transition:opacity var(--t-fast); }
+  .frames button.on { opacity:1; box-shadow:inset 0 0 0 1.5px #fff; }
+  .frames img { width:100%; height:100%; object-fit:cover; display:block; }
+  .list { margin:0; border-radius:var(--r-surf); background:rgba(255,255,255,.05); box-shadow:inset 0 0 0 .5px var(--hair-2); padding:0 16px; }
+  .row { display:flex; gap:14px; align-items:center; padding:14px 0; box-shadow:inset 0 -.5px 0 var(--hair-2); }
+  .row:last-child { box-shadow:none; }
+  .row .k { width:76px; flex:none; color:var(--fg-3); padding-top:1px; letter-spacing:.04em; }
+  .row .v { flex:1; }
+  .row .v b { font-weight:600; display:block; }
+  .row .v p { margin:2px 0 0; color:var(--fg-2); }
+  .row canvas { width:56px; height:56px; border-radius:50%; flex:none; background:#111; box-shadow:inset 0 0 0 .5px var(--hair); }
+  .ask { display:flex; gap:8px; margin:12px 0 0; }
+  .ask input { flex:1; }
+  .ask button { width:var(--h-ctl); height:var(--h-ctl); border-radius:var(--r-ctl); background:#fff; color:#000; display:grid; place-items:center; flex:none; }
+  .reply { display:none; margin:8px 0 0; padding:14px 16px; border-radius:var(--r-surf); background:rgba(255,255,255,.05); box-shadow:inset 0 0 0 .5px var(--hair-2); }
+  .reply.show { display:block; animation:fadeIn var(--t-base); }
+  .actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0 0; }
+  .note { margin:16px 0 0; text-align:center; }
+  .nosky { position:absolute; left:0; right:0; bottom:0; padding:0 20px calc(24px + env(safe-area-inset-bottom)); color:#fff; display:none; }
+  .nosky.show { display:block; }
+  .upl { padding:calc(28px + env(safe-area-inset-top)) 20px 40px; display:grid; gap:12px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .drop { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; height:168px; border-radius:var(--r-surf); background:rgba(30,30,32,.58); -webkit-backdrop-filter:blur(20px) saturate(160%); backdrop-filter:blur(20px) saturate(160%); box-shadow:inset 0 0 0 .5px var(--hair); cursor:pointer; transition:background var(--t-fast), box-shadow var(--t-fast); }
+  .drop.over, .drop:hover { background:rgba(60,60,64,.6); box-shadow:inset 0 0 0 1px rgba(255,255,255,.35); }
+  .drop b { font-weight:600; }
+  .picked { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; }
+  .picked img { width:56px; height:56px; object-fit:cover; border-radius:var(--r-ctl); flex:none; box-shadow:inset 0 0 0 .5px var(--hair); }
+  .more { border-radius:var(--r-surf); background:rgba(30,30,32,.58); -webkit-backdrop-filter:blur(20px) saturate(160%); backdrop-filter:blur(20px) saturate(160%); box-shadow:inset 0 0 0 .5px var(--hair); padding:0 16px; }
+  .more summary { height:48px; display:flex; align-items:center; cursor:pointer; color:var(--fg-2); list-style:none; }
+  .more summary::-webkit-details-marker { display:none; }
+  .more[open] summary { color:var(--fg); }
+  .more > *:not(summary) { margin-bottom:12px; }
+</style>
+</head>
+<body>
+<div class="frame">
+
+<section id="s-camera" class="screen">
+  <div class="vf" id="vf">
+    <video id="video" autoplay muted playsinline></video>
+    <svg id="live" class="live" aria-hidden="true"></svg>
+    <div class="top" style="justify-content:flex-end">
+      <div class="pill glass settle" id="settle"><i></i>Settling compass</div>
+    </div>
+    <div class="hint t-call" id="hint"></div>
+    <div class="sunmark" id="sunmark"></div>
+    <div class="bar">
+      <div class="last" id="last"><b id="count"></b></div>
+      <button class="shutter" id="btn-shot" aria-label="Take a shot"><i></i></button>
+      <button class="pill glass done" id="btn-done">Done</button>
+    </div>
+    <div class="sheet glass" id="sheet-loc">
+      <h2>Where are you?</h2>
+      <p class="t-call c2">Location was refused, and the sun's path depends on it.</p>
+      <input class="field num" type="text" id="latlon" placeholder="25.20, 55.27" inputmode="decimal">
+      <button class="secondary" id="btn-loc" style="margin-top:12px">Use this location</button>
+    </div>
+    <div class="gate" id="gate">
+      <canvas class="gate-bg" id="gate-c"></canvas>
+      <div class="gate-g"></div>
+      <div class="wordmark t-call"><i></i>Suncheck</div>
+      <svg class="arc hidden" id="arc-gate" viewBox="0 0 320 132" aria-hidden="true"></svg>
+      <h1 class="t-title">How much sun does this spot get?</h1>
+      <p class="t-body c2" id="gate-p">Hold the phone where the chair, the plant or the bed will be, and turn slowly.</p>
+      <button class="cta" id="btn-start">Open the camera</button>
+      <div style="display:flex; gap:8px; margin-top:8px">
+        <button class="secondary" id="btn-sample">See a sample</button>
+        <button class="secondary" id="btn-upload-link">Upload photos</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s-progress" class="screen hidden">
+  <div class="proc">
+    <svg class="wait" id="arc-wait" viewBox="0 0 320 132" aria-hidden="true"></svg>
+    <img id="trace-img" alt="" class="hidden">
+    <svg id="trace-svg" preserveAspectRatio="xMidYMid slice"><path id="trace-path" d=""/><g id="trace-sun" opacity="0"><circle id="trace-sun-c" r="0" fill="none" stroke="#F5B342" stroke-width="3"/><text id="trace-sun-t" fill="#fff" font-weight="700" font-family="-apple-system, sans-serif" style="paint-order:stroke; stroke:rgba(0,0,0,.6)">Sun</text></g></svg>
+    <div class="status"><div class="pill glass" id="status"><b>Uploading</b></div></div>
+  </div>
+</section>
+
+<section id="s-result" class="screen hidden">
+  <div class="res" id="hero">
+    <canvas id="living"></canvas>
+    <div class="warm"></div>
+    <svg class="trace" id="res-trace" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><path id="res-path" d=""/></svg>
+    <div class="top-g"></div><div class="bot-g"></div>
+    <div class="clock num" id="readout"><div class="big" id="ro-time"></div><div class="st" id="ro-state"></div></div>
+    <button class="replay" id="play" aria-label="Play the day"><svg class="i" viewBox="0 0 24 24" id="play-ic"><path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/></svg></button>
+    <div class="words" id="words">
+      <div class="mlabel t-micro">Hours of sun a day, by month</div>
+      <div class="mrow" id="months"></div>
+      <h1 id="r-head"></h1>
+      <p class="sub t-call" id="r-sub"></p>
+      <div class="day" id="day">
+        <div class="band" id="band"></div>
+        <div class="ticks" id="ticks"></div>
+        <div class="cursor" id="cursor"><span class="num" id="cur-t"></span></div>
+      </div>
+      <input type="range" id="t" min="0" max="1439" step="1" value="900" hidden>
+      <button class="more-btn" id="btn-more">Details<svg class="i" viewBox="0 0 24 24"><path d="M6 10l6 6 6-6"/></svg></button>
+    </div>
+    <div class="nosky" id="nosky"><h1 class="t-title" id="ns-head"></h1><p class="t-body c2" id="ns-sub" style="margin:4px 0 18px"></p><button class="cta" id="btn-retry">Try again outdoors</button></div>
+    <div class="ds" id="ds">
+      <button class="grab" id="grab" aria-label="Close details"><i></i></button>
+      <div class="body">
+        <div class="frames hidden" id="frames"></div>
+        <div class="list">
+          <div class="row" id="proof"><canvas id="proof-c" width="168" height="168"></canvas><div class="v"><b id="proof-h">Checked against the real sun</b><p class="t-call" id="proof-t"></p></div></div>
+          <div class="row" id="r-cov"><span class="k t-micro">Horizon</span><div class="v t-call"></div></div>
+          <div class="row hidden" id="r-good"><span class="k t-micro">Good for</span><div class="v t-call"></div></div>
+          <div class="row hidden" id="r-not"><span class="k t-micro">Not for</span><div class="v t-call"></div></div>
+          <div class="row hidden" id="r-tip"><span class="k t-micro">Tip</span><div class="v t-call"></div></div>
+        </div>
+        <form class="ask" id="ask"><input class="field" type="text" id="q" placeholder="Ask anything: will basil grow here? Too hot for a dog bed?" autocomplete="off"><button type="submit" aria-label="Ask"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form>
+        <div class="reply t-call" id="reply"></div>
+        <div class="actions">
+          <button class="secondary" id="btn-share"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4M5 13v6a1 1 0 001 1h12a1 1 0 001-1v-6"/></svg>Share</button>
+          <button class="secondary" id="btn-again"><svg class="i" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0113.7-5.7L20 8M20 4v4h-4M20 12a8 8 0 01-13.7 5.7L4 16M4 20v-4h4"/></svg>Another spot</button>
+        </div>
+        <p class="note t-cap c3">The sun's real position over your real skyline, minute by minute. Not a shadow simulation.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s-upload" class="screen hidden">
+  <img class="gate-bg" src="/results/sample/sample_frame.jpg" alt="" style="position:fixed; opacity:.35; object-position:50% 0">
+  <div class="gate-g" style="position:fixed; background:linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.92) 60%)"></div>
+  <div class="upl" style="position:relative">
+    <div class="wordmark t-call" style="position:static; margin-bottom:28px"><i></i>Suncheck</div>
+    <h1 class="t-title" style="margin:0">Check a spot from photos</h1>
+    <p class="t-body c2" style="margin:0 0 12px">Photos of the view from where you'd sit, straight from the camera. One with the sun in it makes the result exact.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="files" multiple accept="image/*,.heic" hidden>
+      <svg class="i" viewBox="0 0 24 24" style="width:28px;height:28px;color:var(--fg-2)"><path d="M12 16V5M8 9l4-4 4 4M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+      <b id="drop-h">Choose photos</b>
+      <span class="t-cap c3" id="drop-s">or drop them here</span>
+    </label>
+    <div class="picked hidden" id="picked"></div>
+    <details class="more" id="more">
+      <summary class="t-call">The files lost their details? Add them here</summary>
+      <p class="t-cap c3" style="margin:6px 0 10px">Photos passed through chat apps lose their time, place, lens and heading. Originals from the camera keep them.</p>
+      <div class="grid2"><input class="field num" type="text" id="u-lat" placeholder="Latitude" inputmode="decimal"><input class="field num" type="text" id="u-lon" placeholder="Longitude" inputmode="decimal"></div>
+      <div class="grid2" style="margin-top:8px"><input class="field num" type="text" id="u-taken" placeholder="Taken, 2026-11-03 16:30"><input class="field num" type="text" id="u-heading" placeholder="Heading °" inputmode="decimal"></div>
+      <div class="grid2" style="margin-top:8px"><input class="field num" type="text" id="u-pitch" placeholder="Pitch °" inputmode="decimal"><input class="field num" type="text" id="u-f35" placeholder="Lens, 35 mm eq." inputmode="decimal"></div>
+    </details>
+    <button class="cta" id="btn-upload" style="margin-top:4px" disabled>Check this spot</button>
+    <button class="textbtn t-call" id="btn-back" style="width:100%">Back</button>
+    <p class="note t-cap c3" id="upload-note"></p>
+  </div>
+</section>
+
+<div class="sheet glass" id="sheet-err" style="position:fixed">
+  <h2 id="err-h">Something went wrong</h2>
+  <p class="t-call c2" id="err-p"></p>
+  <button class="secondary" id="btn-err">Start again</button>
+</div>
+
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const NS = "http://www.w3.org/2000/svg";
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const D = Math.PI / 180;
+  const compassName = (deg) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
+  const S = { stream: null, readings: [], shots: [], pos: null, sensors: null, evName: null, f: null, vw: 0, vh: 0, vfW: 0, vfH: 0,
+              sunShot: false, lastShotAt: 0, lastYaw: null, raf: 0, result: null, job: null, todayPath: null };
+  const show = (id) => { for (const s of document.querySelectorAll(".frame > section")) s.classList.toggle("hidden", s.id !== id); window.scrollTo(0, 0); };
+  const num = (s) => { const v = parseFloat(String(s ?? "").trim()); return Number.isFinite(v) ? v : null; };
+  const wrap = (d) => ((d + 540) % 360) - 180;
+  const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const hhmm = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
+  const fail = (h, p) => { $("err-h").textContent = h; $("err-p").textContent = p; $("sheet-err").classList.add("show"); };
+
+  // ---- the sun's position (NOAA) ----
+  function sunPos(t_ms, lat, lon) {
+    const jc = (t_ms / 86400000 + 2440587.5 - 2451545) / 36525;
+    const L0 = (280.46646 + jc * (36000.76983 + jc * 0.0003032)) % 360;
+    const M = 357.52911 + jc * (35999.05029 - 0.0001537 * jc);
+    const e = 0.016708634 - jc * (0.000042037 + 0.0000001267 * jc);
+    const C = Math.sin(M * D) * (1.914602 - jc * (0.004817 + 0.000014 * jc)) + Math.sin(2 * M * D) * (0.019993 - 0.000101 * jc) + Math.sin(3 * M * D) * 0.000289;
+    const omega = 125.04 - 1934.136 * jc;
+    const lambda = L0 + C - 0.00569 - 0.00478 * Math.sin(omega * D);
+    const eps = 23 + (26 + (21.448 - jc * (46.815 + jc * (0.00059 - jc * 0.001813))) / 60) / 60 + 0.00256 * Math.cos(omega * D);
+    const decl = Math.asin(Math.sin(eps * D) * Math.sin(lambda * D));
+    const y = Math.tan(eps * D / 2) ** 2;
+    const eqt = 4 / D * (y * Math.sin(2 * L0 * D) - 2 * e * Math.sin(M * D) + 4 * e * y * Math.sin(M * D) * Math.cos(2 * L0 * D) - 0.5 * y * y * Math.sin(4 * L0 * D) - 1.25 * e * e * Math.sin(2 * M * D));
+    const minutes = ((t_ms / 60000) % 1440 + 1440) % 1440;
+    const tst = (minutes + eqt + 4 * lon + 1440) % 1440;
+    const H = tst / 4 - 180;
+    const phi = lat * D;
+    const cosz = Math.sin(phi) * Math.sin(decl) + Math.cos(phi) * Math.cos(decl) * Math.cos(H * D);
+    const z = Math.acos(Math.max(-1, Math.min(1, cosz)));
+    let az = Math.acos(Math.max(-1, Math.min(1, (Math.sin(phi) * Math.cos(z) - Math.sin(decl)) / (Math.cos(phi) * Math.sin(z))))) / D;
+    az = H > 0 ? (az + 180) % 360 : (540 - az) % 360;
+    return { az, el: 90 - z / D };
+  }
+  function drawArc(svg, frac, progress) {
+    svg.innerHTML = "";
+    svg.appendChild(el("path", { d: "M10 110H310", stroke: "#fff", "stroke-opacity": ".22", "stroke-width": "1", "stroke-linecap": "round" }));
+    svg.appendChild(el("path", { d: "M30 110A130 92 0 0 1 290 110", fill: "none", stroke: "#fff", "stroke-opacity": ".3", "stroke-width": "1", "stroke-linecap": "round" }));
+    if (progress != null) svg.appendChild(el("path", { d: "M30 110A130 92 0 0 1 290 110", fill: "none", stroke: "#F5B342", "stroke-width": "2", "stroke-linecap": "round", "stroke-dasharray": `${Math.max(0, Math.min(1, progress)) * 350} 400` }));
+    const up = frac >= 0 && frac <= 1; const th = Math.PI * (1 - Math.max(0, Math.min(1, frac)));
+    const x = 160 + 130 * Math.cos(th), y = 110 - 92 * Math.sin(th);
+    if (up) svg.appendChild(el("circle", { cx: x, cy: y, r: 18, fill: "#F5B342", opacity: ".18" }));
+    svg.appendChild(el("circle", { cx: up ? x : 160, cy: up ? y : 122, r: up ? 7 : 4, fill: "#F5B342", opacity: up ? "1" : ".5" }));
+  }
+  const clockFrac = () => { const d = new Date(); return (d.getHours() * 60 + d.getMinutes() - 390) / 675; };
+
+  // ---- orientation ----
+  function devMatrix(alpha, beta, gamma) {
+    const A = alpha * D, B = beta * D, G = gamma * D;
+    const cA = Math.cos(A), sA = Math.sin(A), cB = Math.cos(B), sB = Math.sin(B), cG = Math.cos(G), sG = Math.sin(G);
+    return [[cA * cG - sA * sB * sG, -cB * sA, cG * sA * sB + cA * sG], [cG * sA + cA * sB * sG, cA * cB, sA * sG - cA * cG * sB], [-cB * sG, sB, cB * cG]];
+  }
+  function camPose(r) {
+    const alphaAbs = r.compass !== null ? (360 - r.compass) % 360 : (r.absolute ? r.alpha : null);
+    if (alphaAbs === null || r.beta === null || r.gamma === null) return null;
+    const R = devMatrix(alphaAbs, r.beta, r.gamma);
+    return { R, yaw: (Math.atan2(-R[0][2], -R[1][2]) / D + 360) % 360, pitch: Math.asin(Math.max(-1, Math.min(1, -R[2][2]))) / D };
+  }
+  function project(pose, az, elv) {
+    const dw = [Math.cos(elv * D) * Math.sin(az * D), Math.cos(elv * D) * Math.cos(az * D), Math.sin(elv * D)];
+    const R = pose.R;
+    const dd = [R[0][0] * dw[0] + R[1][0] * dw[1] + R[2][0] * dw[2], R[0][1] * dw[0] + R[1][1] * dw[1] + R[2][1] * dw[2], R[0][2] * dw[0] + R[1][2] * dw[1] + R[2][2] * dw[2]];
+    const fwd = -dd[2]; if (fwd <= 0.05) return null;
+    return { u: S.vw / 2 + S.f * dd[0] / fwd, v: S.vh / 2 + S.f * (-dd[1]) / fwd };
+  }
+  function toScreen(p) { const W = S.vfW, H = S.vfH; const sc = Math.max(W / S.vw, H / S.vh); return { x: (W - S.vw * sc) / 2 + p.u * sc, y: (H - S.vh * sc) / 2 + p.v * sc }; }
+  function onOrient(e) {
+    const compass = (typeof e.webkitCompassHeading === "number" && !Number.isNaN(e.webkitCompassHeading)) ? e.webkitCompassHeading : null;
+    S.readings.push({ t: performance.now(), alpha: e.alpha, beta: e.beta, gamma: e.gamma, absolute: !!e.absolute, compass, compassAcc: (typeof e.webkitCompassAccuracy === "number") ? e.webkitCompassAccuracy : null });
+    if (S.readings.length > 240) S.readings.shift();
+  }
+  const latest = () => S.readings[S.readings.length - 1] || null;
+  function readingBefore(ms) { const now = performance.now(); let best = null; for (const r of S.readings) { const dt = now - r.t; if (dt >= ms - 120 && dt <= ms + 350 && (!best || Math.abs(dt - ms) < Math.abs(now - best.t - ms))) best = r; } return best || latest(); }
+  function steady(ms = 450) {
+    const now = performance.now(); const poses = S.readings.filter((r) => now - r.t <= ms).map(camPose).filter(Boolean);
+    if (poses.length < 4) return false;
+    const ref = poses[poses.length - 1]; let dy = 0, dp = 0;
+    for (const p of poses) { dy = Math.max(dy, Math.abs(wrap(p.yaw - ref.yaw))); dp = Math.max(dp, Math.abs(p.pitch - ref.pitch)); }
+    return dy < 2.5 && dp < 2.5;
+  }
+
+  // ---- the live layer ----
+  function hfov() { return 2 * Math.atan((S.vw / 2) / S.f) / D; }
+  function todayPath(lat, lon) {
+    if (S.todayPath && Date.now() - S.todayPath.at < 600000) return S.todayPath.pts;
+    const day0 = new Date(); day0.setHours(0, 0, 0, 0); const pts = [];
+    for (let m = 0; m < 1440; m += 10) { const s = sunPos(day0.getTime() + m * 60000, lat, lon); if (s.el > -2) pts.push({ m, az: s.az, el: s.el }); }
+    S.todayPath = { at: Date.now(), pts }; return pts;
+  }
+  function drawLive(pose, sun, lat, lon) {
+    const svg = $("live"); svg.innerHTML = "";
+    const W = S.vfW, H = S.vfH; svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    if (!pose || !S.f) return;
+    if (lat !== null) {
+      const pts = todayPath(lat, lon); let d = "", pen = false; const labels = [];
+      for (const q of pts) { const p = project(pose, q.az, q.el); if (!p) { pen = false; continue; } const s = toScreen(p); if (s.x < -W || s.x > 2 * W || s.y < -H || s.y > 2 * H) { pen = false; continue; } d += (pen ? "L" : "M") + s.x.toFixed(1) + " " + s.y.toFixed(1); pen = true; if (q.m % 120 === 0 && q.el > 0 && s.x > 28 && s.x < W - 44 && s.y > 110 && s.y < H - 200) labels.push({ s, m: q.m }); }
+      svg.appendChild(el("path", { d, fill: "none", stroke: "#000", "stroke-opacity": ".4", "stroke-width": "4", "stroke-linecap": "round" }));
+      svg.appendChild(el("path", { d, fill: "none", stroke: "#fff", "stroke-opacity": ".8", "stroke-width": "1.5", "stroke-linecap": "round", "stroke-dasharray": "2 7" }));
+      for (const l of labels) { svg.appendChild(el("circle", { cx: l.s.x, cy: l.s.y, r: 3, fill: "#fff" })); const t = el("text", { x: l.s.x + 8, y: l.s.y + 4, fill: "#fff", "font-size": "11", "font-weight": "600", "font-family": "-apple-system, sans-serif", style: "paint-order:stroke; stroke:rgba(0,0,0,.6); stroke-width:3px" }); t.textContent = hhmm(l.m); svg.appendChild(t); }
+    }
+    // the horizon ring: a bearing scale that turns with you, ticks every 15 degrees, gold where the sweep has covered
+    const cx = W / 2, cy = H - 176, R = Math.min(W * 0.42, 150), yaw = pose.yaw;
+    const pt = (rel, r = R) => { const a = (90 - rel) * D; return [cx + r * Math.cos(a), cy - r * Math.sin(a) * 0.5]; };
+    const arc = (a, b, r = R) => { let d = ""; for (let x = a; x <= b + 0.01; x += 3) { const [px, py] = pt(Math.min(x, b), r); d += (d ? "L" : "M") + px.toFixed(1) + " " + py.toFixed(1); } return d; };
+    const tx = (txt, x, y, size, bold, op) => { const t = el("text", { x, y, "text-anchor": "middle", fill: "#fff", "fill-opacity": op, "font-size": size, "font-weight": bold ? "700" : "600", "font-family": "-apple-system, sans-serif", style: "paint-order:stroke; stroke:rgba(0,0,0,.55); stroke-width:3px" }); t.textContent = txt; svg.appendChild(t); };
+    svg.appendChild(el("path", { d: arc(-90, 90), fill: "none", stroke: "#000", "stroke-opacity": ".35", "stroke-width": "4", "stroke-linecap": "round" }));
+    svg.appendChild(el("path", { d: arc(-90, 90), fill: "none", stroke: "#fff", "stroke-opacity": ".5", "stroke-width": "1.5", "stroke-linecap": "round" }));
+    const half = hfov() / 2;
+    for (const s of S.shots) { if (s.yaw === null) continue; const rel = wrap(s.yaw - yaw); const a = Math.max(-90, rel - half), b = Math.min(90, rel + half); if (b > a) svg.appendChild(el("path", { d: arc(a, b), fill: "none", stroke: "#F5B342", "stroke-width": "4", "stroke-linecap": "round" })); }
+    const names = { 0: "N", 45: "NE", 90: "E", 135: "SE", 180: "S", 225: "SW", 270: "W", 315: "NW" };
+    for (let az = 0; az < 360; az += 15) { const rel = wrap(az - yaw); if (Math.abs(rel) > 88) continue; const [x1, y1] = pt(rel, R - 2), [x2, y2] = pt(rel, R - (names[az] ? 12 : 7)); svg.appendChild(el("path", { d: `M${x1} ${y1}L${x2} ${y2}`, stroke: "#fff", "stroke-opacity": ".8", "stroke-width": names[az] ? "1.6" : "1" })); if (names[az]) { const [x, y] = pt(rel, R - 24); tx(names[az], x, y + 4, 11, true, ".9"); } }
+    for (const rel of [-half, half]) { const [x1, y1] = pt(rel, R + 2), [x2, y2] = pt(rel, R + 9); svg.appendChild(el("path", { d: `M${x1} ${y1}L${x2} ${y2}`, stroke: "#fff", "stroke-width": "2" })); }
+    if (sun && sun.el > 0) { const rel = Math.max(-92, Math.min(92, wrap(sun.az - yaw))); const [x, y] = pt(rel); svg.appendChild(el("circle", { cx: x, cy: y, r: 9, fill: "none", stroke: "#F5B342", "stroke-width": "1.5", opacity: ".7" })); svg.appendChild(el("circle", { cx: x, cy: y, r: 5, fill: "#F5B342", stroke: "#000", "stroke-opacity": ".45", "stroke-width": "1.5" })); }
+  }
+  function coveredDeg() { const bins = new Set(); for (const s of S.shots) { if (s.yaw === null) continue; const half = hfov() / 2; for (let a = -half; a <= half; a += 5) bins.add(Math.round(((s.yaw + a) % 360 + 360) % 360 / 5)); } return bins.size * 5; }
+  function tick() {
+    S.raf = requestAnimationFrame(tick);
+    if (!S.stream) return;
+    const vf = $("vf").getBoundingClientRect(); S.vfW = vf.width; S.vfH = vf.height;
+    const r = latest(); const pose = r ? camPose(r) : null;
+    $("settle").classList.toggle("show", !!(r && r.compassAcc !== null && r.compassAcc > 15));
+    let hint = S.shots.length ? "Turn slowly" : "Hold still";
+    const lat = S.pos ? S.pos.latitude : null, lon = S.pos ? S.pos.longitude : null;
+    let sunInFrame = false, sun = null;
+    $("sunmark").classList.remove("show");
+    if (pose && lat !== null) {
+      sun = sunPos(Date.now(), lat, lon);
+      if (sun.el > 0 && S.f) {
+        const p = project(pose, sun.az, sun.el);
+        if (p && p.u >= 0 && p.u <= S.vw && p.v >= 0 && p.v <= S.vh) { sunInFrame = true; const s = toScreen(p); const m = $("sunmark"); m.style.left = s.x + "px"; m.style.top = s.y + "px"; m.classList.add("show"); if (!S.sunShot) hint = "The sun is in view. Hold still"; }
+        else if (!S.sunShot && S.shots.length) hint = wrap(sun.az - pose.yaw) < 0 ? "Turn left to the sun" : "Turn right to the sun";
+      }
+    }
+    drawLive(pose, sun, lat, lon);
+    if (S.shots.length && coveredDeg() >= 120 && (S.sunShot || !sun || sun.el <= 0)) hint = "That's enough. Tap Done, or keep going";
+    if (!pose && S.shots.length === 0 && S.sensors === false) hint = "Motion access was refused: shots will not know their heading";
+    $("hint").textContent = hint;
+    $("btn-done").classList.toggle("ready", S.shots.length > 0);
+    if (pose && S.f && steady() && performance.now() - S.lastShotAt > 1000) {
+      const turned = S.lastYaw === null ? true : Math.abs(wrap(pose.yaw - S.lastYaw)) >= 26;
+      const sunNow = sunInFrame && !S.sunShot && (S.lastYaw === null || Math.abs(wrap(pose.yaw - S.lastYaw)) >= 6);
+      if (turned || sunNow) shot(true, sunInFrame);
+    }
+  }
+
+  // ---- start, shots, analyse ----
+  async function start() {
+    const btn = $("btn-start"); btn.disabled = true; btn.textContent = "Opening";
+    try {
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") S.sensors = (await DeviceOrientationEvent.requestPermission()) === "granted";
+      else S.sensors = ("DeviceOrientationEvent" in window);
+    } catch (e) { S.sensors = false; }
+    S.evName = ("ondeviceorientationabsolute" in window) ? "deviceorientationabsolute" : "deviceorientation";
+    window.addEventListener(S.evName, onOrient, true);
+    if (navigator.geolocation) navigator.geolocation.watchPosition((p) => { S.pos = p.coords; $("sheet-loc").classList.remove("show"); }, () => { if (!S.pos) $("sheet-loc").classList.add("show"); }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 });
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("no camera API");
+      S.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
+      const v = $("video"); v.srcObject = S.stream; v.play().catch(() => {});
+      v.onloadedmetadata = () => { S.vw = v.videoWidth; S.vh = v.videoHeight; S.f = 0.751 * Math.max(S.vw, S.vh); };
+      $("gate").classList.add("off"); S.lastShotAt = performance.now() + 1500; cancelAnimationFrame(S.raf); tick();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = "Open the camera";
+      fail("The camera didn't open", (e && e.name === "NotAllowedError") ? "Camera access was refused. Allow it in Settings, or upload photos instead." : "This browser can't open the camera here. Upload photos instead.");
+      $("btn-err").textContent = "Upload photos"; $("btn-err").onclick = () => { $("sheet-err").classList.remove("show"); show("s-upload"); };
+    }
+  }
+  async function shot(auto = false, sunInFrame = false) {
+    const v = $("video"); if (!v.videoWidth) return;
+    S.lastShotAt = performance.now();
+    const r = readingBefore(auto ? 80 : 280); const pose = r ? camPose(r) : null;
+    S.vw = v.videoWidth; S.vh = v.videoHeight; if (!S.f) S.f = 0.751 * Math.max(S.vw, S.vh);
+    const scale = Math.min(1, 2048 / Math.max(S.vw, S.vh));
+    const c = document.createElement("canvas"); c.width = Math.round(S.vw * scale); c.height = Math.round(S.vh * scale);
+    c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+    const blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.92));
+    const angle = (screen.orientation && typeof screen.orientation.angle === "number") ? screen.orientation.angle : (typeof window.orientation === "number" ? window.orientation : 0);
+    const manual = $("latlon").value.split(",").map(num);
+    const meta = { name: `shot_${S.shots.length + 1}.jpg`, t_ms: Date.now(), w: c.width, h: c.height, angle, auto, sun_in_frame: sunInFrame,
+      alpha: r ? r.alpha : null, beta: r ? r.beta : null, gamma: r ? r.gamma : null, absolute: r ? r.absolute : false, compass: r ? r.compass : null, compass_acc: r ? r.compassAcc : null,
+      lat: S.pos ? S.pos.latitude : (manual.length === 2 ? manual[0] : null), lon: S.pos ? S.pos.longitude : (manual.length === 2 ? manual[1] : null), acc_m: S.pos ? S.pos.accuracy : null, alt: S.pos ? S.pos.altitude : null };
+    const yaw = pose ? pose.yaw : null;
+    S.shots.push({ blob, meta, yaw }); S.lastYaw = yaw; if (sunInFrame) S.sunShot = true;
+    const last = $("last"); const old = last.querySelector("img"); if (old) old.remove();
+    const img = document.createElement("img"); img.src = URL.createObjectURL(blob); last.prepend(img);
+    $("count").textContent = S.shots.length; $("count").classList.add("show");
+  }
+  function analyseShots() {
+    if (!S.shots.length) return;
+    cancelAnimationFrame(S.raf); if (S.stream) for (const t of S.stream.getTracks()) t.stop();
+    const fd = new FormData();
+    fd.append("meta", JSON.stringify({ mode: "camera", tz_min: -new Date().getTimezoneOffset(), ua: navigator.userAgent, sensors_granted: S.sensors, event: S.evName, photos: S.shots.map((s) => s.meta) }));
+    for (const s of S.shots) fd.append("photo", s.blob, s.meta.name);
+    analyse(fd, S.shots[S.shots.length - 1].blob);
+  }
+  function analyseUpload() {
+    const files = $("files").files; if (!files.length) { $("upload-note").textContent = "Choose photos first"; return; }
+    const fd = new FormData();
+    fd.append("meta", JSON.stringify({ mode: "upload", tz_min: -new Date().getTimezoneOffset(), lat: num($("u-lat").value), lon: num($("u-lon").value), taken: $("u-taken").value.trim() || null, heading: num($("u-heading").value), pitch: num($("u-pitch").value), f35: num($("u-f35").value) }));
+    for (const f of files) fd.append("photo", f, f.name);
+    analyse(fd, null);
+  }
+  const STATUS = { "Finding": ["Looking for the sky", "and the sun"], "Solving": ["Checking", "against the sun"], "Tracing": ["Counting the hours", "minute by minute"], "Writing": ["Writing it up", ""] };
+  const setStatus = (b, s) => { $("status").innerHTML = `<b>${b}</b>` + (s ? `<span>${s}</span>` : ""); };
+  function traceFrame(fr, i, n) {
+    const img = $("trace-img"), svg = $("trace-svg"), path = $("trace-path");
+    $("arc-wait").classList.add("hidden"); img.classList.remove("hidden");
+    svg.setAttribute("viewBox", `0 0 ${fr.frame_size[0]} ${fr.frame_size[1]}`);
+    path.style.transition = "none"; path.setAttribute("d", "");
+    const g = $("trace-sun"); g.style.transition = "none"; g.setAttribute("opacity", "0");
+    img.onload = () => {
+      const pts = fr.skyline_px || [];
+      if (pts.length) {
+        path.setAttribute("d", pts.map((p, k) => (k ? "L" : "M") + p[0] + " " + p[1]).join(""));
+        const len = path.getTotalLength(); path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
+        requestAnimationFrame(() => { path.style.transition = "stroke-dashoffset 1.3s ease-in-out"; path.style.strokeDashoffset = 0; });
+      }
+      if (fr.sun_px) {  // the sun SAM found, ringed after the trace
+        const u = Math.max(fr.frame_size[0], fr.frame_size[1]) / 1600; const c = $("trace-sun-c"), t = $("trace-sun-t");
+        c.setAttribute("cx", fr.sun_px[0]); c.setAttribute("cy", fr.sun_px[1]); c.setAttribute("r", 42 * u); c.setAttribute("stroke-width", 3 * u);
+        t.setAttribute("x", fr.sun_px[0] + 54 * u); t.setAttribute("y", fr.sun_px[1] + 8 * u); t.setAttribute("font-size", 24 * u); t.setAttribute("stroke-width", 5 * u);
+        setTimeout(() => { g.style.transition = "opacity .5s ease"; g.setAttribute("opacity", "1"); }, pts.length ? 1300 : 200);
+      }
+    };
+    img.src = fr.frame_url;
+    setStatus("Tracing the skyline", `${i + 1} of ${n}` + (fr.sun_px ? " · sun found" : ""));
+  }
+  async function analyse(fd, lastBlob) {
+    show("s-progress");
+    const img = $("trace-img"); $("trace-path").setAttribute("d", "");
+    if (lastBlob) { img.src = URL.createObjectURL(lastBlob); img.classList.remove("hidden"); $("arc-wait").classList.add("hidden"); } else { img.classList.add("hidden"); $("arc-wait").classList.remove("hidden"); }
+    setStatus("Uploading", "");
+    let prog = 0.03; const paint = () => { if (!lastBlob) drawArc($("arc-wait"), prog, prog); }; paint();
+    let job;
+    try { const r = await fetch("/api/analyze", { method: "POST", body: fd }); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); job = j.job; }
+    catch (e) { fail("The upload didn't go through", e.message + ". Check the connection and try again."); $("btn-err").onclick = () => location.reload(); return; }
+    S.job = job; let shown = -1, partial = null, result = null, state = "running";
+    const timer = setInterval(async () => {
+      try {
+        const j = await (await fetch(`/api/job/${job}`)).json();
+        prog = Math.max(prog, j.progress || 0); paint();
+        if (j.partial) partial = j.partial;
+        if (!partial) { const key = Object.keys(STATUS).find((k) => (j.message || "").startsWith(k)); if (key) setStatus(STATUS[key][0], STATUS[key][1]); }
+        if (j.state === "done") { result = j.result; state = "done"; }
+        if (j.state === "error") { clearInterval(timer); state = "error"; fail("The analysis failed", j.error || "Unknown error"); $("btn-err").onclick = () => location.reload(); }
+      } catch (e) { /* keep polling */ }
+    }, 1000);
+    const showNext = () => {
+      if (state === "error") return;
+      if (partial && shown + 1 < partial.length) { shown += 1; traceFrame(partial[shown], shown, partial.length); setTimeout(showNext, 1800); return; }
+      if (partial && shown + 1 >= partial.length && result) { clearInterval(timer); history.replaceState(null, "", `?job=${job}`); render(result); return; }
+      if (partial && shown + 1 >= partial.length) setStatus("Counting the hours", "minute by minute");
+      setTimeout(showNext, 400);
+    };
+    showNext();
+  }
+
+  // ---- the living photo ----
+  const L = { idx: 0, month: new Date().getMonth() + 1, t: 900, img: null, mask: null, off: null, playing: false, raf: 0, ready: false };
+  const photo = () => S.result.photos[L.idx];
+  const monthKey = () => (L.month === new Date().getMonth() + 1) ? "0" : String(L.month);
+  function sunAt(t) {
+    const pts = photo().sun_paths.months[monthKey()]; const step = photo().sun_paths.step_min;
+    const i = Math.min(pts.length - 2, Math.max(0, Math.floor(t / step))); const a = pts[i], b = pts[i + 1]; const w = (t - i * step) / step;
+    return { u: a[0] + (b[0] - a[0]) * w, v: a[1] + (b[1] - a[1]) * w, vis: a[2] && b[2], lit: a[3] };
+  }
+  const sunUp = (t) => { const up = photo().sun_paths.up[monthKey()]; return up && t >= up[0] && t <= up[1]; };
+  function loadFrame(i) {
+    L.idx = i; L.ready = false; const p = photo();
+    const img = new Image(), mask = new Image(); let n = 0;
+    const done = () => { if (++n < 2) return; L.img = img; L.mask = mask; const c = $("living"); c.width = p.frame_size[0]; c.height = p.frame_size[1]; L.off = document.createElement("canvas"); L.off.width = c.width; L.off.height = c.height; L.ready = true; setMonth(L.month); if (L.arrive) { L.arrive = false; arrive(); } };
+    img.onload = done; mask.onload = done; img.src = p.frame_url; mask.src = p.sky_png_url;
+    for (const [k, b] of [...$("frames").children].entries()) b.classList.toggle("on", k === i);
+  }
+  function drawLiving() {
+    if (!L.ready) return;
+    const c = $("living"), ctx = c.getContext("2d"); const W = c.width, H = c.height;
+    ctx.globalCompositeOperation = "source-over"; ctx.drawImage(L.img, 0, 0, W, H);
+    const s = sunAt(L.t); const up = sunUp(L.t);
+    if (up && s.vis) {
+      // the disc at its true angular size (0.53 degrees), the glare around it
+      const f = photo().f_px_frame || Math.max(W, H) * 0.75; const disc = Math.max(4, f * 0.0093); const glow = disc * 7;
+      const o = L.off.getContext("2d"); o.globalCompositeOperation = "source-over"; o.clearRect(0, 0, W, H);
+      const g = o.createRadialGradient(s.u, s.v, 0, s.u, s.v, glow);
+      g.addColorStop(0, "rgba(255,253,245,1)"); g.addColorStop(disc / glow, "rgba(255,250,228,1)"); g.addColorStop(Math.min(.5, disc / glow * 2.2), "rgba(255,228,170,.6)"); g.addColorStop(.55, "rgba(255,205,120,.22)"); g.addColorStop(1, "rgba(255,190,100,0)");
+      o.fillStyle = g; o.beginPath(); o.arc(s.u, s.v, glow, 0, Math.PI * 2); o.fill();
+      o.globalCompositeOperation = "destination-in"; o.drawImage(L.mask, 0, 0, W, H);
+      ctx.globalCompositeOperation = "lighter"; ctx.drawImage(L.off, 0, 0); ctx.globalCompositeOperation = "source-over";
+    }
+    const hero = $("hero"); const noSky = !!(S.result.summary && S.result.summary.no_sky);
+    hero.className = "res " + (noSky ? "shade" : !up ? "night" : s.lit ? "lit" : "shade");
+    $("ro-time").textContent = noSky ? "" : hhmm(L.t); $("ro-state").textContent = noSky ? "No sky found" : !up ? "Sun down" : s.lit ? "In sun" : "In shade"; $("ro-state").classList.toggle("lit", !!(up && s.lit && !noSky));
+    const tr = $("t"); const lo = +tr.min, hi = +tr.max; const cur = $("cursor"); cur.style.left = (Math.max(0, Math.min(1, (L.t - lo) / (hi - lo))) * 100) + "%"; $("cur-t").textContent = hhmm(L.t);
+    if (!noSky) drawInstruments(ctx, W, H);
+  }
+  function setMonth(m) {
+    L.month = m; const btns = [...$("months").querySelectorAll("button")]; btns.forEach((b, k) => b.classList.toggle("on", k + 1 === m));
+    const p = photo(); const up = p.sun_paths.up[monthKey()] || [360, 1080];
+    const tr = $("t"); tr.min = Math.max(0, up[0] - 20); tr.max = Math.min(1439, up[1] + 20);
+    // hour ticks under the band
+    const tk = $("ticks"); tk.innerHTML = ""; const lo0 = +tr.min, hi0 = +tr.max;
+    for (let h = Math.ceil(lo0 / 60); h * 60 <= hi0; h++) { const x = ((h * 60 - lo0) / (hi0 - lo0) * 100).toFixed(2) + "%"; const i = document.createElement("i"); i.style.left = x; if (h % 3 === 0) { i.style.height = "7px"; const s = document.createElement("span"); s.style.left = x; s.textContent = h; tk.appendChild(s); } tk.appendChild(i); }
+    const pts = p.sun_paths.months[monthKey()], step = p.sun_paths.step_min, lo = +tr.min, hi = +tr.max; const segs = []; let cur = null, from = lo;
+    for (let i = 0; i <= pts.length; i++) { const t = Math.min(hi, i * step); if (t < lo) continue; const lit = i < pts.length && !!pts[i][3]; if (cur === null) { cur = lit; from = t; continue; } if (lit !== cur || i === pts.length || t >= hi) { segs.push([from, t, cur]); cur = lit; from = t; if (t >= hi) break; } }
+    const pc = (t) => ((t - lo) / (hi - lo) * 100).toFixed(2) + "%";
+    $("band").style.setProperty("--track", segs.length ? `linear-gradient(to right, ${segs.map(([a, b, lit]) => `${lit ? "#F5B342" : "rgba(255,255,255,.22)"} ${pc(a)}, ${lit ? "#F5B342" : "rgba(255,255,255,.22)"} ${pc(b)}`).join(", ")})` : "rgba(255,255,255,.22)");
+    L.t = Math.min(hi, Math.max(lo, L.t)); tr.value = L.t; drawLiving();
+  }
+  const PLAY = '<path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/>', PAUSE = '<path d="M8 5.5v13M16 5.5v13" stroke-width="2.6"/>';
+  function stopPlay() { L.playing = false; cancelAnimationFrame(L.raf); $("play-ic").innerHTML = PLAY; }
+  function play() {
+    if (L.playing) { stopPlay(); return; }
+    L.playing = true; $("play-ic").innerHTML = PAUSE; const tr = $("t"); const lo = +tr.min, hi = +tr.max; const t0 = performance.now(); const dur = 3800;
+    const step = () => { const x = Math.min(1, (performance.now() - t0) / dur); const e = x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; L.t = lo + (hi - lo) * e; tr.value = L.t; drawLiving(); if (x < 1 && L.playing) L.raf = requestAnimationFrame(step); else { stopPlay(); settle(); } };
+    L.raf = requestAnimationFrame(step);
+  }
+  // ---- the instruments drawn on the photo: the month's sun path with hour marks, compass bearings along the skyline ----
+  function camMatrix(p) {  // same construction as the server's camera model: world = R · camera
+    const y = p.yaw * D, pt = p.pitch * D, r = (p.roll || 0) * D;
+    const mul = (A, B) => A.map((row, i) => [0, 1, 2].map((j) => row[0] * B[0][j] + row[1] * B[1][j] + row[2] * B[2][j]));
+    const rotZ = [[Math.cos(r), -Math.sin(r), 0], [Math.sin(r), Math.cos(r), 0], [0, 0, 1]];
+    const rotX = [[1, 0, 0], [0, Math.cos(pt), -Math.sin(pt)], [0, Math.sin(pt), Math.cos(pt)]];
+    const base = [[1, 0, 0], [0, 0, 1], [0, -1, 0]];
+    const yawW = [[Math.cos(y), Math.sin(y), 0], [-Math.sin(y), Math.cos(y), 0], [0, 0, 1]];
+    return mul(mul(yawW, base), mul(rotX, rotZ));
+  }
+  function toPixel(R, f, W, H, az, elv) {  // frame-copy pixel of a sky direction, null when behind the camera
+    const dw = [Math.cos(elv * D) * Math.sin(az * D), Math.cos(elv * D) * Math.cos(az * D), Math.sin(elv * D)];
+    const dc = [R[0][0] * dw[0] + R[1][0] * dw[1] + R[2][0] * dw[2], R[0][1] * dw[0] + R[1][1] * dw[1] + R[2][1] * dw[2], R[0][2] * dw[0] + R[1][2] * dw[1] + R[2][2] * dw[2]];
+    if (dc[2] <= 1e-6) return null;
+    return [W / 2 + f * dc[0] / dc[2], H / 2 + f * dc[1] / dc[2]];
+  }
+  function drawInstruments(ctx, W, H) {
+    const p = photo(); const unit = Math.max(W, H) / 1600;
+    const stroke = (fn, w, col, dash) => { ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.setLineDash(dash || []); ctx.lineWidth = w * 2.2 * unit; ctx.strokeStyle = "rgba(0,0,0,.45)"; fn(); ctx.stroke(); ctx.lineWidth = w * unit; ctx.strokeStyle = col; fn(); ctx.stroke(); ctx.restore(); };
+    const label = (txt, x, y, size, bold) => { ctx.save(); ctx.font = `${bold ? 700 : 600} ${Math.round(size * unit)}px -apple-system, system-ui, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.lineWidth = 4 * unit; ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.lineJoin = "round"; ctx.strokeText(txt, x, y); ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.fillText(txt, x, y); ctx.restore(); };
+    // the month's sun path: solid where the spot is lit, dotted where the skyline blocks it
+    const pts = p.sun_paths.months[monthKey()], step = p.sun_paths.step_min; const up = p.sun_paths.up[monthKey()];
+    const runs = []; let run = null;
+    for (let i = 0; i < pts.length; i++) { const q = pts[i]; const okp = q[2] && up && i * step >= up[0] && i * step <= up[1]; if (okp && (run === null || run.lit !== !!q[3])) { if (run) { run.pts.push(q); runs.push(run); } run = { lit: !!q[3], pts: [q] }; } else if (okp) run.pts.push(q); else if (run) { runs.push(run); run = null; } }
+    if (run) runs.push(run);
+    for (const r of runs) { if (r.pts.length < 2) continue; stroke(() => { ctx.beginPath(); r.pts.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); }, r.lit ? 2.2 : 1.6, r.lit ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.55)", r.lit ? [] : [4 * unit, 9 * unit]); }
+    for (let i = 0; i < pts.length; i++) { const m = i * step; if (m % 180 !== 0 || !pts[i][2] || !up || m < up[0] || m > up[1]) continue; const [x, y] = pts[i]; ctx.save(); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, 3.2 * unit, 0, Math.PI * 2); ctx.fill(); ctx.restore(); label(String(m / 60), x, y - 16 * unit, 20, false); }
+    // compass bearings ticked along the skyline
+    const hz = S.result.horizon; const pu = p.pose_used; if (!hz || !pu) return;
+    const R = camMatrix(pu); const f = p.f_px_frame || pu.f_px;
+    const elAt = (az) => { const i = Math.round((((az % 360) + 360) % 360) / 0.5) % hz.az.length; return hz.el[i]; };
+    for (let az = 0; az < 360; az += 5) {
+      const e = elAt(az); if (e === null || e === undefined) continue;
+      const a = toPixel(R, f, W, H, az, e); if (!a || a[0] < 0 || a[0] > W || a[1] < 0 || a[1] > H) continue;
+      const major = az % 15 === 0;
+      stroke(() => { ctx.beginPath(); ctx.moveTo(a[0], a[1] + 4 * unit); ctx.lineTo(a[0], a[1] + (major ? 18 : 10) * unit); }, major ? 1.6 : 1.1, "rgba(255,255,255,.8)");
+      if (major) { const names = { 0: "N", 45: "NE", 90: "E", 135: "SE", 180: "S", 225: "SW", 270: "W", 315: "NW" }; label(names[az] || `${az}°`, a[0], a[1] + 34 * unit, names[az] ? 22 : 18, !!names[az]); }
+    }
+  }
+  function arrive() {  // the skyline traces itself across the photo, the sun runs its day, then the words come up
+    const p = photo(); const svg = $("res-trace"), path = $("res-path");
+    svg.setAttribute("viewBox", `0 0 ${p.frame_size[0]} ${p.frame_size[1]}`);
+    const pts = p.skyline_px || [];
+    if (pts.length) {
+      path.setAttribute("d", pts.map((q, k) => (k ? "L" : "M") + q[0] + " " + q[1]).join(""));
+      const len = path.getTotalLength(); path.style.transition = "none"; path.style.strokeDasharray = len; path.style.strokeDashoffset = len; path.classList.add("on");
+      requestAnimationFrame(() => requestAnimationFrame(() => { path.style.transition = "stroke-dashoffset 1.4s ease-in-out, opacity 1.2s ease"; path.style.strokeDashoffset = 0; }));
+    }
+    setTimeout(() => { if (!L.playing) play(); }, pts.length ? 1500 : 300);
+    setTimeout(() => { path.classList.remove("on"); path.classList.add("dim"); }, 3200);
+    setTimeout(() => $("words").classList.add("in"), pts.length ? 2600 : 900);
+  }
+  function settle() {
+    const pts = photo().sun_paths.months[monthKey()], step = photo().sun_paths.step_min; let best = null, cur = null;
+    for (let i = 0; i <= pts.length; i++) { const lit = i < pts.length && pts[i][3]; if (lit && cur === null) cur = i; if (!lit && cur !== null) { if (!best || i - cur > best[1] - best[0]) best = [cur, i]; cur = null; } }
+    if (best) { L.t = Math.round((best[0] + best[1]) / 2 * step); $("t").value = L.t; drawLiving(); }
+  }
+
+  // ---- the proof row ----
+  function drawProof(p, rep) {
+    const row = $("proof"); const c = $("proof-c"), ctx = c.getContext("2d");
+    if (!p || !p.sun_pixel_frame) {
+      ctx.clearRect(0, 0, c.width, c.height); c.style.display = "none";
+      $("proof-h").textContent = "Not checked against the sun"; $("proof-t").textContent = "No shot had the sun in it, so directions come from the phone's compass alone, which can be 10° or more off. One shot with the sun makes it exact."; return;
+    }
+    c.style.display = ""; const img = new Image();
+    img.onload = () => {
+      const [su, sv] = p.sun_pixel_frame; const R = Math.max(40, p.frame_size[0] * 0.09); const size = c.width;
+      ctx.clearRect(0, 0, size, size); ctx.save(); ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2); ctx.clip();
+      ctx.drawImage(img, su - R, sv - R, 2 * R, 2 * R, 0, 0, size, size);
+      const k = size / (2 * R);
+      if (p.sun_check && p.sun_check.predicted_pixel) { const sc = p.frame_size[0] / p.size[0]; const dx = (p.sun_check.predicted_pixel[0] * sc - su) * k, dy = (p.sun_check.predicted_pixel[1] * sc - sv) * k; ctx.strokeStyle = "rgba(255,255,255,.75)"; ctx.setLineDash([4, 4]); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(size / 2 + dx, size / 2 + dy, 14, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(size / 2 + dx, size / 2 + dy); ctx.lineTo(size / 2, size / 2); ctx.stroke(); }
+      ctx.strokeStyle = "#F5B342"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(size / 2, size / 2, 16, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    };
+    img.src = p.frame_url;
+    const err = p.sun_check ? p.sun_check.angular_error_deg : null; const corr = rep.calibration && rep.calibration.heading_correction_deg;
+    $("proof-h").textContent = "Checked against the real sun";
+    $("proof-t").textContent = err != null ? `We found the sun in your photo. The phone's compass had it ${err.toFixed(0)}° off, so every direction was corrected by that much.` : "We found the sun in your photo and set every direction from it, so the paths match your view.";
+  }
+
+  // ---- the answer ----
+  function parseAdvice(text) { const out = {}; if (!text) return out; for (const line of text.split(/\n+/)) { const m = line.match(/^\s*([A-Za-z ]{3,12}):\s*(.*)$/); if (m) out[m[1].trim().toLowerCase()] = m[2].trim(); } return out; }
+  function render(rep) {
+    S.result = rep; show("s-result");
+    rep.photos.sort((a, b) => (b.pose_from_sun ? 1 : 0) - (a.pose_from_sun ? 1 : 0));
+    const sum = rep.summary || {}; $("r-head").textContent = sum.headline || "Your spot"; $("r-sub").textContent = sum.subline || "";
+    const noSky = !!sum.no_sky;
+    $("words").classList.toggle("hidden", noSky); $("nosky").classList.toggle("show", noSky); $("ds").classList.toggle("hidden", noSky);
+    if (noSky) { $("ns-head").textContent = sum.headline; $("ns-sub").textContent = sum.subline; }
+    L.arrive = !noSky;
+    const ms = $("months"); for (const b of ms.querySelectorAll("button")) b.remove();
+    MONTHS.forEach((m, i) => { const b = document.createElement("button"); const h = rep.monthly_direct_sun_hours[i].direct_sun_hours; b.innerHTML = `${m}<small>${h >= 10 ? Math.round(h) : h.toFixed(1)}h</small>`; b.title = m; b.onclick = () => setMonth(i + 1); ms.appendChild(b); });
+    const fr = $("frames"); fr.innerHTML = ""; fr.classList.toggle("hidden", rep.photos.length < 2);
+    rep.photos.forEach((p, i) => { const b = document.createElement("button"); const im = document.createElement("img"); im.src = p.frame_url; b.appendChild(im); b.onclick = () => loadFrame(i); fr.appendChild(b); });
+    const now = new Date(); L.t = now.getHours() * 60 + now.getMinutes(); L.month = now.getMonth() + 1;
+    const up0 = rep.photos[0].sun_paths.up["0"]; if (!up0 || L.t < up0[0] || L.t > up0[1]) L.t = up0 ? Math.round((up0[0] + up0[1]) / 2 + (up0[1] - up0[0]) * 0.2) : 900;
+    loadFrame(0);
+    drawProof(rep.photos.find((p) => p.sun_pixel_frame), rep);
+    const cov = rep.coverage || {}; const cv = $("r-cov"); cv.classList.toggle("hidden", noSky);
+    cv.querySelector(".v").textContent = cov.azimuth_deg ? `You covered ${Math.round(cov.azimuth_deg)}° of the horizon, ${compassName(cov.from_az)} to ${compassName(cov.to_az)}. Directions you didn't photograph count as blocked.` : "";
+    const adv = parseAdvice(rep.advice);
+    for (const [k, id] of [["good for", "r-good"], ["not for", "r-not"], ["tip", "r-tip"]]) { const row = $(id); row.classList.toggle("hidden", !adv[k]); if (adv[k]) row.querySelector(".v").textContent = adv[k]; }
+    $("reply").classList.remove("show"); $("q").value = "";
+    if (S.job === "sample") document.querySelector("#ds .note").textContent = "A sample view, generated with Muse Image and run through the same pipeline as a real one. The sun's real position over the skyline, minute by minute. Not a shadow simulation.";
+  }
+  $("t").addEventListener("input", () => { if (L.playing) stopPlay(); L.t = +$("t").value; drawLiving(); $("words").classList.add("in"); });
+  // the day band: drag anywhere on it
+  const dayEl = $("day");
+  const dayAt = (e) => { const r = dayEl.getBoundingClientRect(); const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); const tr = $("t"); return Math.round(+tr.min + x * (+tr.max - +tr.min)); };
+  dayEl.addEventListener("pointerdown", (e) => { dayEl.setPointerCapture(e.pointerId); if (L.playing) stopPlay(); L.t = dayAt(e); $("t").value = L.t; drawLiving(); });
+  dayEl.addEventListener("pointermove", (e) => { if (e.buttons || (e.pointerType === "touch")) { if (!e.buttons && e.pointerType !== "touch") return; L.t = dayAt(e); $("t").value = L.t; drawLiving(); } });
+  $("play").onclick = play;
+  // the details sheet: tap, or swipe up on the words; swipe down on the sheet to close
+  $("btn-more").onclick = () => $("ds").classList.add("open");
+  $("grab").onclick = () => $("ds").classList.remove("open");
+  $("btn-retry").onclick = () => { location.href = location.pathname; };
+  let ty = null;
+  $("words").addEventListener("touchstart", (e) => { ty = e.touches[0].clientY; }, { passive: true });
+  $("words").addEventListener("touchend", (e) => { if (ty !== null && ty - e.changedTouches[0].clientY > 40) $("ds").classList.add("open"); ty = null; }, { passive: true });
+  $("ds").addEventListener("touchstart", (e) => { ty = e.touches[0].clientY; }, { passive: true });
+  $("ds").addEventListener("touchend", (e) => { const b = $("ds").querySelector(".body"); if (ty !== null && e.changedTouches[0].clientY - ty > 60 && b.scrollTop <= 0) $("ds").classList.remove("open"); ty = null; }, { passive: true });
+  $("ask").onsubmit = async (e) => {
+    e.preventDefault(); const q = $("q").value.trim(); if (!q || !S.job) return;
+    const box = $("reply"); box.textContent = "Thinking"; box.classList.add("show");
+    try { const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job: S.job, question: q }) }); const j = await r.json(); box.textContent = j.answer || j.error || "No answer"; }
+    catch (err) { box.textContent = "Could not ask right now."; }
+  };
+  $("btn-share").onclick = async () => {
+    const rep = S.result; if (!rep) return;
+    const url = location.origin + "/?job=" + S.job; const text = `${rep.summary.headline}. ${rep.summary.subline}`;
+    try {
+      const src = rep.card_url || (rep.photos[0] && rep.photos[0].overlay_url);
+      const blob = await (await fetch(src)).blob(); const file = new File([blob], "suncheck.jpg", { type: "image/jpeg" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ title: "Suncheck", text, url, files: [file] }); return; }
+      if (navigator.share) { await navigator.share({ title: "Suncheck", text, url }); return; }
+      await navigator.clipboard.writeText(url); $("btn-share").lastChild.textContent = "Link copied";
+    } catch (e) { /* cancelled */ }
+  };
+  $("btn-loc").onclick = () => { const m = $("latlon").value.split(",").map(num); if (m.length === 2 && m[0] !== null && m[1] !== null) { S.pos = { latitude: m[0], longitude: m[1], accuracy: null, altitude: null }; $("sheet-loc").classList.remove("show"); } };
+  $("btn-start").onclick = start;
+  $("btn-upload-link").onclick = () => show("s-upload");
+  $("btn-sample").onclick = () => { location.href = "?job=sample"; };
+  $("btn-back").onclick = () => show("s-camera");
+  $("btn-shot").onclick = () => shot(false, $("sunmark").classList.contains("show"));
+  $("btn-done").onclick = analyseShots;
+  $("btn-upload").onclick = analyseUpload;
+  $("btn-again").onclick = () => { location.href = location.pathname; };
+  $("btn-err").onclick = () => location.reload();
+  // the upload screen: chosen files shown, drag and drop on a desktop
+  const picked = () => { const fs = $("files").files; const box = $("picked"); box.innerHTML = ""; box.classList.toggle("hidden", !fs.length); for (const f of fs) { if (!f.type.startsWith("image/") || f.type.includes("heic")) continue; const im = document.createElement("img"); im.src = URL.createObjectURL(f); box.appendChild(im); } $("drop-h").textContent = fs.length ? `${fs.length} photo${fs.length > 1 ? "s" : ""} chosen` : "Choose photos"; $("drop-s").textContent = fs.length ? "tap to change" : "or drop them here"; $("btn-upload").disabled = !fs.length; };
+  $("files").onchange = picked;
+  const drop = $("drop");
+  drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); }; drop.ondragleave = () => drop.classList.remove("over");
+  drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer && e.dataTransfer.files.length) { $("files").files = e.dataTransfer.files; picked(); } };
+  const phone = /iPhone|iPad|Android/i.test(navigator.userAgent) || (("ontouchstart" in window) && screen.width < 900);
+  const canCam = navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext;
+  if (!phone || !canCam) {
+    $("gate-p").textContent = phone ? "The camera needs a secure address on the phone. Try the sample, or upload photos." : "Open this on a phone to sweep a balcony, a window or a garden. Here, see a sample, or upload photos of a view.";
+    $("btn-start").textContent = phone ? "Upload photos" : "See a sample"; $("btn-start").onclick = () => { if (phone) show("s-upload"); else location.href = "?job=sample"; };
+    $("btn-sample").classList.toggle("hidden", !phone);
+  }
+  drawArc($("arc-gate"), clockFrac());
+  // the opening backdrop: the sample frame with the result's own instruments drawn on it, no labels to collide
+  async function drawGate() {
+    try {
+      const j = await (await fetch("/api/job/sample")).json(); if (j.state !== "done") return;
+      const rep = j.result, p = rep.photos[0]; const img = new Image();
+      img.onload = () => {
+        const c = $("gate-c"); c.width = p.frame_size[0]; c.height = p.frame_size[1]; const ctx = c.getContext("2d");
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        const unit = Math.max(c.width, c.height) / 1600; const pts = p.skyline_px || [];
+        if (pts.length) { ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.beginPath(); pts.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.lineWidth = 5 * unit; ctx.strokeStyle = "rgba(0,0,0,.45)"; ctx.stroke(); ctx.lineWidth = 2 * unit; ctx.strokeStyle = "rgba(255,255,255,.75)"; ctx.stroke(); ctx.restore(); }
+        const saved = S.result, li = L.idx; S.result = rep; L.idx = 0;
+        try { drawInstruments(ctx, c.width, c.height); } finally { S.result = saved; L.idx = li; }
+      };
+      img.src = p.frame_url;
+    } catch (e) { /* the opening works without it */ }
+  }
+  const jobParam = new URLSearchParams(location.search).get("job");
+  if (!jobParam) drawGate();
+  if (jobParam) {
+    S.job = jobParam; show("s-progress"); setStatus("Loading", ""); drawArc($("arc-wait"), clockFrac());
+    fetch(`/api/job/${jobParam}`).then((r) => r.json()).then((j) => { if (j.state === "done") render(j.result); else { fail("No result here", j.error || "This link has no finished result."); } }).catch((e) => fail("Could not load", e.message));
+  }
+})();
+</script>
+</body>
+</html>
