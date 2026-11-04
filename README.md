@@ -9,6 +9,9 @@ Everything in this folder was written during the hackathon.
 
 **Live:** https://suncheck-447203242444.me-central1.run.app (open it on a phone to sweep a view; a laptop sees the sample).
 
+**Demo video (2:28):** https://youtu.be/e447Y-fMn2g. Its opening view is a Muse Image generation run through this
+pipeline like any photo; the film says so, then shows two real iPhone photos.
+
 ## What does the work
 
 - **SAM 3.1** (Meta Model API) segments the sky and finds the sun in each photo, and names what blocks the sun: every
@@ -130,4 +133,5 @@ from Ayman's own balcony.
   the lens default for the camera stream, the monthly hours against a time-lapse (the tested balcony gets none, which the
   table says too, a weak check), the sign of the roll from the accelerometer and the landscape holds, the bearing scale
   and the processing sequence on the phone itself, the share sheet on iOS.
-- Not yet built: the video, the submission.
+- The demo film was made on 4 November from a film-only page that plays the results frame by frame; the submission
+  followed the same day.
