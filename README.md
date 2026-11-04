@@ -8,6 +8,8 @@ Built from scratch for the Meta Global AI Developer Hackathon (27 October to 4 N
 Everything in this folder was written during the hackathon.
 
 **Live:** https://suncheck-447203242444.me-central1.run.app (open it on a phone to sweep a view; a laptop sees the sample).
+Demo spots: `/?job=tunisia` and `/?job=mexico` (real iPhone photos), `/?job=sample` and `/?job=istanbul` (Muse Image views,
+said so on the page; the second is the one that opens the film).
 
 **Demo video (2:28):** https://youtu.be/e447Y-fMn2g. Its opening view is a Muse Image generation run through this
 pipeline like any photo; the film says so, then shows two real iPhone photos.

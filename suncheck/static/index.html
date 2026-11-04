@@ -791,7 +791,7 @@
     const adv = parseAdvice(rep.advice);
     for (const [k, id] of [["good for", "r-good"], ["not for", "r-not"], ["tip", "r-tip"]]) { const row = $(id); row.classList.toggle("hidden", !adv[k]); if (adv[k]) row.querySelector(".v").textContent = adv[k]; }
     $("reply").classList.remove("show"); $("q").value = "";
-    if (S.job === "sample") document.querySelector("#ds .note").textContent = "A sample view, generated with Muse Image and run through the same pipeline as a real one. The sun's real position over the skyline, minute by minute. Not a shadow simulation.";
+    if (S.job === "sample" || S.job === "istanbul") document.querySelector("#ds .note").textContent = "A sample view, generated with Muse Image and run through the same pipeline as a real one. The sun's real position over the skyline, minute by minute. Not a shadow simulation.";
   }
   $("t").addEventListener("input", () => { if (L.playing) stopPlay(); L.t = +$("t").value; drawLiving(); $("words").classList.add("in"); });
   // the day band: drag anywhere on it
